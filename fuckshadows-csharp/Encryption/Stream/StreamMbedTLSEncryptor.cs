@@ -71,7 +71,7 @@ namespace Fuckshadows.Encryption.Stream
             }
             MbedTLS.cipher_init(ctx);
             if (MbedTLS.cipher_setup( ctx, MbedTLS.cipher_info_from_string( _innerLibName ) ) != 0 )
-                throw new Exception("Cannot initialize mbed TLS cipher context");
+                throw new System.Exception("Cannot initialize mbed TLS cipher context");
             /*
              * MbedTLS takes key length by bit
              * cipher_setkey() will set the correct key schedule
@@ -85,11 +85,11 @@ namespace Fuckshadows.Encryption.Stream
              */
             if (MbedTLS.cipher_setkey(ctx, realkey, keyLen * 8,
                 isCipher ? MbedTLS.MBEDTLS_ENCRYPT : MbedTLS.MBEDTLS_DECRYPT) != 0 )
-                throw new Exception("Cannot set mbed TLS cipher key");
+                throw new System.Exception("Cannot set mbed TLS cipher key");
             if (MbedTLS.cipher_set_iv(ctx, iv, ivLen) != 0)
-                throw new Exception("Cannot set mbed TLS cipher IV");
+                throw new System.Exception("Cannot set mbed TLS cipher IV");
             if (MbedTLS.cipher_reset(ctx) != 0)
-                throw new Exception("Cannot finalize mbed TLS cipher context");
+                throw new System.Exception("Cannot finalize mbed TLS cipher context");
         }
 
         protected override void cipherUpdate(bool isCipher, int length, byte[] buf, byte[] outbuf)
@@ -101,7 +101,7 @@ namespace Fuckshadows.Encryption.Stream
             }
             if (MbedTLS.cipher_update(isCipher ? _encryptCtx : _decryptCtx,
                 buf, length, outbuf, ref length) != 0 )
-                throw new Exception("Cannot update mbed TLS cipher context");
+                throw new System.Exception("Cannot update mbed TLS cipher context");
         }
 
         #region IDisposable

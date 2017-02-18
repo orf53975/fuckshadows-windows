@@ -22,7 +22,7 @@ namespace test
             byte[] plain2 = new byte[plain.Length + 16];
             int outLen = 0;
             int outLen2 = 0;
-            
+
             _random.NextBytes(plain);
             encryptor.Encrypt(plain, plain.Length, cipher, out outLen);
             decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
@@ -145,10 +145,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor;
-                    IEncryptor decryptor;
-                    encryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
-                    decryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
+                    IEncryptor encryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
+                    IEncryptor decryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
                     RunEncryptionRound(encryptor, decryptor);
                 }
             }
@@ -167,7 +165,7 @@ namespace test
             List<Thread> threads = new List<Thread>();
             for (int i = 0; i < 10; i++)
             {
-                Thread t = new Thread(new ThreadStart(RunSingleRC4EncryptionThread));
+                Thread t = new Thread(RunSingleRC4EncryptionThread);
                 threads.Add(t);
                 t.Start();
             }
@@ -185,10 +183,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor;
-                    IEncryptor decryptor;
-                    encryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
-                    decryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
+                    IEncryptor encryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
+                    IEncryptor decryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
                     RunEncryptionRound(encryptor, decryptor);
                 }
             }
@@ -207,7 +203,7 @@ namespace test
             List<Thread> threads = new List<Thread>();
             for (int i = 0; i < 10; i++)
             {
-                Thread t = new Thread(new ThreadStart(RunSingleSodiumEncryptionThread));
+                Thread t = new Thread(RunSingleSodiumEncryptionThread);
                 threads.Add(t);
                 t.Start();
             }
@@ -225,10 +221,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor;
-                    IEncryptor decryptor;
-                    encryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
-                    decryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
+                    IEncryptor encryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
+                    IEncryptor decryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
                     RunEncryptionRound(encryptor, decryptor);
                 }
             }

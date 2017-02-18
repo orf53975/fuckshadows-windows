@@ -13,18 +13,6 @@ using Fuckshadows.Util;
 
 namespace Fuckshadows.View
 {
-    struct TrafficInfo
-    {
-        public long inbound;
-        public long outbound;
-
-        public TrafficInfo(long inbound, long outbound)
-        {
-            this.inbound = inbound;
-            this.outbound = outbound;
-        }
-    }
-
     public partial class LogForm : Form
     {
         long lastOffset;
@@ -36,9 +24,19 @@ namespace Fuckshadows.View
         // global traffic update lock, make it static
         private static readonly object _lock = new object();
 
-        #region chart
-        long lastMaxSpeed;
-        FuckshadowsController.QueueLast<TrafficInfo> traffic = new FuckshadowsController.QueueLast<TrafficInfo>();
+        #region Traffic Chart
+
+        Queue<TrafficInfo> trafficInfoQueue = new Queue<TrafficInfo>();
+        const int queueMaxLength = 60;
+        long lastInbound, lastOutbound;
+        long maxSpeed = 0, lastMaxSpeed = 0;
+        const long minScale = 50;
+        BandwidthScaleInfo bandwidthScale;
+        List<float> inboundPoints = new List<float>();
+        List<float> outboundPoints = new List<float>();
+        TextAnnotation inboundAnnotation = new TextAnnotation();
+        TextAnnotation outboundAnnotation = new TextAnnotation();
+
         #endregion
 
         public LogForm(FuckshadowsController controller, string filename)
@@ -64,27 +62,22 @@ namespace Fuckshadows.View
 
         private void update_TrafficChart()
         {
-            List<float> inboundPoints = new List<float>();
-            List<float> outboundPoints = new List<float>();
-            TextAnnotation inboundAnnotation = new TextAnnotation();
-            TextAnnotation outboundAnnotation = new TextAnnotation();
-            BandwidthScaleInfo bandwidthScale;
-            const long minScale = 50;
-            long maxSpeed = 0;
-            long lastInbound, lastOutbound;
-
             lock (_lock)
             {
-                if (traffic.Count == 0)
+                if (trafficInfoQueue.Count == 0)
                     return;
-                foreach (var trafficPerSecond in traffic)
+
+                inboundPoints.Clear();
+                outboundPoints.Clear();
+                maxSpeed = 0;
+                foreach (var trafficInfo in trafficInfoQueue)
                 {
-                    inboundPoints.Add(trafficPerSecond.inbound);
-                    outboundPoints.Add(trafficPerSecond.outbound);
-                    maxSpeed = Math.Max(maxSpeed, Math.Max(trafficPerSecond.inbound, trafficPerSecond.outbound));
+                    inboundPoints.Add(trafficInfo.inbound);
+                    outboundPoints.Add(trafficInfo.outbound);
+                    maxSpeed = Math.Max(maxSpeed, Math.Max(trafficInfo.inbound, trafficInfo.outbound));
                 }
-                lastInbound = traffic.Last().inbound;
-                lastOutbound = traffic.Last().outbound;
+                lastInbound = trafficInfoQueue.Last().inbound;
+                lastOutbound = trafficInfoQueue.Last().outbound;
             }
 
             if (maxSpeed > 0)
@@ -100,7 +93,7 @@ namespace Fuckshadows.View
 
             bandwidthScale = Utils.GetBandwidthScale(maxSpeed);
 
-            //rescale the original data points, since it is List<float>, .ForEach does not work
+            // re-scale the original data points, since it is List<float>, .ForEach does not work
             inboundPoints = inboundPoints.Select(p => p / bandwidthScale.unit).ToList();
             outboundPoints = outboundPoints.Select(p => p / bandwidthScale.unit).ToList();
 
@@ -124,10 +117,29 @@ namespace Fuckshadows.View
         {
             lock (_lock)
             {
-                traffic = new FuckshadowsController.QueueLast<TrafficInfo>();
-                foreach (var trafficPerSecond in controller.traffic)
+                if (trafficInfoQueue.Count == 0)
                 {
-                    traffic.Enqueue(new TrafficInfo(trafficPerSecond.inboundIncreasement, trafficPerSecond.outboundIncreasement));
+                    // Init an empty queue
+                    for (int i = 0; i < queueMaxLength; i++)
+                    {
+                        trafficInfoQueue.Enqueue(new TrafficInfo(0, 0));
+                    }
+
+                    foreach (var trafficPerSecond in controller.trafficPerSecondQueue)
+                    {
+                        trafficInfoQueue.Enqueue(new TrafficInfo(trafficPerSecond.inboundIncreasement,
+                            trafficPerSecond.outboundIncreasement));
+                        if (trafficInfoQueue.Count > queueMaxLength)
+                            trafficInfoQueue.Dequeue();
+                    }
+                }
+                else
+                {
+                    var lastTraffic = controller.trafficPerSecondQueue.Last();
+                    trafficInfoQueue.Enqueue(new TrafficInfo(lastTraffic.inboundIncreasement,
+                        lastTraffic.outboundIncreasement));
+                    if (trafficInfoQueue.Count > queueMaxLength)
+                        trafficInfoQueue.Dequeue();
                 }
             }
         }
@@ -162,7 +174,7 @@ namespace Fuckshadows.View
         private void InitContent()
         {
             using (StreamReader reader = new StreamReader(new FileStream(filename,
-                     FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+                FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
             {
                 if (reader.BaseStream.Length > BACK_OFFSET)
                 {
@@ -187,7 +199,7 @@ namespace Fuckshadows.View
             try
             {
                 using (StreamReader reader = new StreamReader(new FileStream(filename,
-                         FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+                    FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
                 {
                     reader.BaseStream.Seek(lastOffset, SeekOrigin.Begin);
 
@@ -214,7 +226,7 @@ namespace Fuckshadows.View
             }
 
             this.Text = I18N.GetString("Log Viewer") +
-                $" [in: {Utils.FormatBytes(controller.InboundCounter)}, out: {Utils.FormatBytes(controller.OutboundCounter)}]";
+                        $" [in: {Utils.FormatBytes(controller.InboundCounter)}, out: {Utils.FormatBytes(controller.OutboundCounter)}]";
         }
 
         private void LogForm_Load(object sender, EventArgs e)
@@ -257,10 +269,11 @@ namespace Fuckshadows.View
             config.topMost = topMostTrigger;
             config.wrapText = wrapTextTrigger;
             config.toolbarShown = toolbarTrigger;
-            config.Font=LogMessageTextBox.Font;
-            config.BackgroundColor=LogMessageTextBox.BackColor;
-            config.TextColor=LogMessageTextBox.ForeColor;
-            if (WindowState != FormWindowState.Minimized && !(config.Maximized = WindowState == FormWindowState.Maximized))
+            config.Font = LogMessageTextBox.Font;
+            config.BackgroundColor = LogMessageTextBox.BackColor;
+            config.TextColor = LogMessageTextBox.ForeColor;
+            if (WindowState != FormWindowState.Minimized &&
+                !(config.Maximized = WindowState == FormWindowState.Maximized))
             {
                 config.Top = Top;
                 config.Left = Left;
@@ -288,6 +301,7 @@ namespace Fuckshadows.View
         }
 
         #region Clean up the content in LogMessageTextBox.
+
         private void DoCleanLogs()
         {
             Logging.Clear();
@@ -304,9 +318,11 @@ namespace Fuckshadows.View
         {
             DoCleanLogs();
         }
+
         #endregion
 
         #region Change the font settings applied in LogMessageTextBox.
+
         private void DoChangeFont()
         {
             try
@@ -334,9 +350,11 @@ namespace Fuckshadows.View
         {
             DoChangeFont();
         }
+
         #endregion
 
         #region Trigger the log messages to wrapable, or not.
+
         bool wrapTextTrigger = false;
         bool wrapTextTriggerLock = false;
 
@@ -367,9 +385,11 @@ namespace Fuckshadows.View
                 TriggerWrapText();
             }
         }
+
         #endregion
 
         #region Trigger the window to top most, or not.
+
         bool topMostTrigger = false;
         bool topMostTriggerLock = false;
 
@@ -399,6 +419,7 @@ namespace Fuckshadows.View
                 TriggerTopMost();
             }
         }
+
         #endregion
 
         private bool toolbarTrigger = false;

@@ -37,7 +37,7 @@ namespace Fuckshadows.Encryption
             {
                 _rng.GetBytes(buf, 0, len);
             }
-            catch (Exception)
+            catch (System.Exception)
             {
                 // the backup way
                 byte[] tmp = new byte[len];

@@ -12,6 +12,7 @@ using Fuckshadows.Model;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
 using Newtonsoft.Json;
+using System.Linq;
 
 namespace Fuckshadows.Controller
 {
@@ -37,7 +38,7 @@ namespace Fuckshadows.Controller
         private long _outboundCounter = 0;
         public long InboundCounter => Interlocked.Read(ref _inboundCounter);
         public long OutboundCounter => Interlocked.Read(ref _outboundCounter);
-        public QueueLast<TrafficPerSecond> traffic;
+        public Queue<TrafficPerSecond> trafficPerSecondQueue;
 
         private bool stopped = false;
 
@@ -46,17 +47,6 @@ namespace Fuckshadows.Controller
         public class PathEventArgs : EventArgs
         {
             public string Path;
-        }
-
-        public class QueueLast<T> : Queue<T>
-        {
-            public T Last { get; private set; }
-
-            public new void Enqueue(T item)
-            {
-                Last = item;
-                base.Enqueue(item);
-            }
         }
 
         public class TrafficPerSecond
@@ -99,10 +89,7 @@ namespace Fuckshadows.Controller
 
         protected void ReportError(Exception e)
         {
-            if (Errored != null)
-            {
-                Errored(this, new ErrorEventArgs(e));
-            }
+            Errored?.Invoke(this, new ErrorEventArgs(e));
         }
 
         public Server GetCurrentServer()
@@ -187,30 +174,21 @@ namespace Fuckshadows.Controller
         {
             _config.enabled = enabled;
             SaveConfig(_config);
-            if (EnableStatusChanged != null)
-            {
-                EnableStatusChanged(this, new EventArgs());
-            }
+            EnableStatusChanged?.Invoke(this, new EventArgs());
         }
 
         public void ToggleGlobal(bool global)
         {
             _config.global = global;
             SaveConfig(_config);
-            if (EnableGlobalChanged != null)
-            {
-                EnableGlobalChanged(this, new EventArgs());
-            }
+            EnableGlobalChanged?.Invoke(this, new EventArgs());
         }
 
         public void ToggleShareOverLAN(bool enabled)
         {
             _config.shareOverLan = enabled;
             SaveConfig(_config);
-            if (ShareOverLanStatusChanged != null)
-            {
-                ShareOverLanStatusChanged(this, new EventArgs());
-            }
+            ShareOverLanStatusChanged?.Invoke(this, new EventArgs());
         }
 
         public void DisableProxy()
@@ -233,10 +211,7 @@ namespace Fuckshadows.Controller
         {
             _config.isVerboseLogging = enabled;
             SaveConfig(_config);
-            if (VerboseLoggingStatusChanged != null)
-            {
-                VerboseLoggingStatusChanged(this, new EventArgs());
-            }
+            VerboseLoggingStatusChanged?.Invoke(this, new EventArgs());
         }
 
         public void SelectServerIndex(int index)
@@ -260,14 +235,8 @@ namespace Fuckshadows.Controller
                 return;
             }
             stopped = true;
-            if (_listener != null)
-            {
-                _listener.Stop();
-            }
-            if (privoxyRunner != null)
-            {
-                privoxyRunner.Stop();
-            }
+            _listener?.Stop();
+            privoxyRunner?.Stop();
             if (_config.enabled)
             {
                 SystemProxy.Update(_config, true, null);
@@ -278,19 +247,13 @@ namespace Fuckshadows.Controller
         public void TouchPACFile()
         {
             string pacFilename = _pacServer.TouchPACFile();
-            if (PacFileReadyToOpen != null)
-            {
-                PacFileReadyToOpen(this, new PathEventArgs() {Path = pacFilename});
-            }
+            PacFileReadyToOpen?.Invoke(this, new PathEventArgs() {Path = pacFilename});
         }
 
         public void TouchUserRuleFile()
         {
             string userRuleFilename = _pacServer.TouchUserRuleFile();
-            if (UserRuleFileReadyToOpen != null)
-            {
-                UserRuleFileReadyToOpen(this, new PathEventArgs() {Path = userRuleFilename});
-            }
+            UserRuleFileReadyToOpen?.Invoke(this, new PathEventArgs() {Path = userRuleFilename});
         }
 
         public string GetQRCodeForCurrentServer()
@@ -313,10 +276,7 @@ namespace Fuckshadows.Controller
 
         public void UpdatePACFromGFWList()
         {
-            if (gfwListUpdater != null)
-            {
-                gfwListUpdater.UpdatePACFromGFWList(_config);
-            }
+            gfwListUpdater?.UpdatePACFromGFWList(_config);
         }
 
         public void UpdateStatisticsConfiguration(bool enabled)
@@ -331,50 +291,35 @@ namespace Fuckshadows.Controller
         {
             _config.pacUrl = pacUrl;
             SaveConfig(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void UseOnlinePAC(bool useOnlinePac)
         {
             _config.useOnlinePac = useOnlinePac;
             SaveConfig(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void ToggleSecureLocalPac(bool enabled)
         {
             _config.secureLocalPac = enabled;
             SaveConfig(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void ToggleCheckingUpdate(bool enabled)
         {
             _config.autoCheckUpdate = enabled;
             Configuration.Save(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void ToggleCheckingPreRelease(bool enabled)
         {
             _config.checkPreRelease = enabled;
             Configuration.Save(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void SaveLogViewerConfig(LogViewerConfig newConfig)
@@ -382,20 +327,14 @@ namespace Fuckshadows.Controller
             _config.logViewer = newConfig;
             newConfig.SaveSize();
             Configuration.Save(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void SaveHotkeyConfig(HotkeyConfig newConfig)
         {
             _config.hotkey = newConfig;
             SaveConfig(_config);
-            if (ConfigChanged != null)
-            {
-                ConfigChanged(this, new EventArgs());
-            }
+            ConfigChanged?.Invoke(this, new EventArgs());
         }
 
         public void UpdateLatency(Server server, TimeSpan latency)
@@ -451,10 +390,7 @@ namespace Fuckshadows.Controller
 
             availabilityStatistics.UpdateConfiguration(this);
 
-            if (_listener != null)
-            {
-                _listener.Stop();
-            }
+            _listener?.Stop();
             // don't put PrivoxyRunner.Start() before pacServer.Stop()
             // or bind will fail when switching bind address from 0.0.0.0 to 127.0.0.1
             // though UseShellExecute is set to true now
@@ -463,20 +399,19 @@ namespace Fuckshadows.Controller
             try
             {
                 var strategy = GetCurrentStrategy();
-                if (strategy != null)
-                {
-                    strategy.ReloadServers();
-                }
+                strategy?.ReloadServers();
 
                 privoxyRunner.Start(_config);
 
                 TCPRelay tcpRelay = new TCPRelay(this, _config);
                 UDPRelay udpRelay = new UDPRelay(this);
-                List<Listener.IService> services = new List<Listener.IService>();
-                services.Add(tcpRelay);
-                services.Add(udpRelay);
-                services.Add(_pacServer);
-                services.Add(new PortForwarder(privoxyRunner.RunningPort));
+                List<Listener.IService> services = new List<Listener.IService>
+                {
+                    tcpRelay,
+                    udpRelay,
+                    _pacServer,
+                    new PortForwarder(privoxyRunner.RunningPort)
+                };
                 _listener = new Listener(services);
                 _listener.Start(_config);
             }
@@ -565,15 +500,10 @@ namespace Fuckshadows.Controller
                     }
                 }
             }
-            string abpContent;
-            if (File.Exists(PACServer.USER_ABP_FILE))
-            {
-                abpContent = FileManager.NonExclusiveReadAllText(PACServer.USER_ABP_FILE, Encoding.UTF8);
-            }
-            else
-            {
-                abpContent = Utils.UnGzip(Resources.abp_js);
-            }
+            var abpContent = File.Exists(PACServer.USER_ABP_FILE)
+                ? FileManager.NonExclusiveReadAllText(PACServer.USER_ABP_FILE, Encoding.UTF8)
+                : Utils.UnGzip(Resources.abp_js);
+
             abpContent = abpContent.Replace("__RULES__", JsonConvert.SerializeObject(lines, Formatting.Indented));
             if (File.Exists(PACServer.PAC_FILE))
             {
@@ -595,10 +525,10 @@ namespace Fuckshadows.Controller
 
         private void StartTrafficStatistics(int queueMaxSize)
         {
-            traffic = new QueueLast<TrafficPerSecond>();
+            trafficPerSecondQueue = new Queue<TrafficPerSecond>();
             for (int i = 0; i < queueMaxSize; i++)
             {
-                traffic.Enqueue(new TrafficPerSecond());
+                trafficPerSecondQueue.Enqueue(new TrafficPerSecond());
             }
             _trafficThread = new Thread(new ThreadStart(() => TrafficStatistics(queueMaxSize)));
             _trafficThread.IsBackground = true;
@@ -607,19 +537,22 @@ namespace Fuckshadows.Controller
 
         private void TrafficStatistics(int queueMaxSize)
         {
+            TrafficPerSecond previous, current;
             while (true)
             {
-                TrafficPerSecond previous = traffic.Last;
-                TrafficPerSecond current = new TrafficPerSecond();
+                previous = trafficPerSecondQueue.Last();
+                current = new TrafficPerSecond
+                {
+                    inboundCounter = InboundCounter,
+                    outboundCounter = OutboundCounter
+                };
 
-                var inbound = current.inboundCounter = InboundCounter;
-                var outbound = current.outboundCounter = OutboundCounter;
-                current.inboundIncreasement = inbound - previous.inboundCounter;
-                current.outboundIncreasement = outbound - previous.outboundCounter;
+                current.inboundIncreasement = current.inboundCounter - previous.inboundCounter;
+                current.outboundIncreasement = current.outboundCounter - previous.outboundCounter;
 
-                traffic.Enqueue(current);
-                if (traffic.Count > queueMaxSize)
-                    traffic.Dequeue();
+                trafficPerSecondQueue.Enqueue(current);
+                if (trafficPerSecondQueue.Count > queueMaxSize)
+                    trafficPerSecondQueue.Dequeue();
 
                 TrafficChanged?.Invoke(this, new EventArgs());
 

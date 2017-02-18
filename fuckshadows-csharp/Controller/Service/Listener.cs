@@ -6,6 +6,8 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Fuckshadows.Model;
 
+// TODO: check IPv6 connections
+// TODO: refine re-recv by using ring buffer?
 namespace Fuckshadows.Controller
 {
     public class Listener

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Fuckshadows.Encryption;
+using Fuckshadows.Encryption.Exception;
 
 namespace Fuckshadows.Encryption.AEAD
 {
@@ -60,7 +61,7 @@ namespace Fuckshadows.Encryption.AEAD
             _cipher = CipherInfo.Type;
             if (_cipher == 0)
             {
-                throw new Exception("method not found");
+                throw new System.Exception("method not found");
             }
             keyLen = CipherInfo.KeySize;
             saltLen = CipherInfo.SaltSize;
@@ -77,14 +78,14 @@ namespace Fuckshadows.Encryption.AEAD
         private void DeriveKey(byte[] password, byte[] key)
         {
             int ret = Sodium.crypto_generichash(key, keyLen, password, (ulong) password.Length, IntPtr.Zero, 0);
-            if (ret != 0) throw new Exception("failed to generate hash");
+            if (ret != 0) throw new System.Exception("failed to generate hash");
         }
 
         private void DeriveSessionKey(byte[] salt, byte[] masterKey, byte[] sessionKey)
         {
             int ret = Sodium.crypto_generichash_blake2b_salt_personal(sessionKey, keyLen, IntPtr.Zero, 0, masterKey,
                 keyLen, salt, personalBytes);
-            if (ret != 0) throw new Exception("failed to generate session key");
+            if (ret != 0) throw new System.Exception("failed to generate session key");
         }
 
         protected virtual void initCipher(byte[] salt, bool isCipher)

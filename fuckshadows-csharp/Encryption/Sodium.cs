@@ -23,7 +23,7 @@ namespace Fuckshadows.Encryption
             catch (IOException)
             {
             }
-            catch (Exception e)
+            catch (System.Exception e)
             {
                 Logging.LogUsefulException(e);
             }
@@ -34,7 +34,7 @@ namespace Fuckshadows.Encryption
                 int ret = sodium_init();
                 if (ret == -1)
                 {
-                    throw new Exception("Failed to initialize sodium");
+                    throw new System.Exception("Failed to initialize sodium");
                 }
                 else /* 1 means already initialized; 0 means success */
                 {

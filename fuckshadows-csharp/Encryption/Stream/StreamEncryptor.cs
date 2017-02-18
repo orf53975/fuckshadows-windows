@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Net;
+using Fuckshadows.Encryption.Exception;
 
 namespace Fuckshadows.Encryption.Stream
 {
@@ -51,7 +52,7 @@ namespace Fuckshadows.Encryption.Stream
             _cipher = CipherInfo.Type;
             if (_cipher == 0)
             {
-                throw new Exception("method not found");
+                throw new System.Exception("method not found");
             }
             keyLen = CipherInfo.KeySize;
             ivLen = CipherInfo.IvSize;

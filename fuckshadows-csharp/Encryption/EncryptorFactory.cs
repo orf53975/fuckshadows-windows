@@ -33,7 +33,7 @@ namespace Fuckshadows.Encryption
             method = method.ToLowerInvariant();
             Type t = _registeredEncryptors[method];
             ConstructorInfo c = t.GetConstructor(_constructorTypes);
-            if (c == null) throw new Exception("Invalid ctor");
+            if (c == null) throw new System.Exception("Invalid ctor");
             IEncryptor result = (IEncryptor) c.Invoke(new object[] {method, password});
             return result;
         }

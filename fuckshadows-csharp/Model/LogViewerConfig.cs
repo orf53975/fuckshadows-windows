@@ -25,7 +25,6 @@ namespace Fuckshadows.Model
             toolbarShown = false;
         }
 
-
         #region Size
 
         public void SaveSize()
@@ -46,18 +45,21 @@ namespace Fuckshadows.Model
             get { return Properties.Settings.Default.LogViewerHeight; }
             set { Properties.Settings.Default.LogViewerHeight = value; }
         }
+
         [JsonIgnore]
         public int Top
         {
             get { return Properties.Settings.Default.LogViewerTop; }
             set { Properties.Settings.Default.LogViewerTop = value; }
         }
+
         [JsonIgnore]
         public int Left
         {
             get { return Properties.Settings.Default.LogViewerLeft; }
             set { Properties.Settings.Default.LogViewerLeft = value; }
         }
+
         [JsonIgnore]
         public bool Maximized
         {
@@ -89,6 +91,17 @@ namespace Fuckshadows.Model
         }
 
         #endregion
+    }
 
+    public class TrafficInfo
+    {
+        public long inbound;
+        public long outbound;
+
+        public TrafficInfo(long inbound, long outbound)
+        {
+            this.inbound = inbound;
+            this.outbound = outbound;
+        }
     }
 }

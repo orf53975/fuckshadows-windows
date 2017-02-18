@@ -10,6 +10,7 @@ using Fuckshadows.Util;
 using ZXing;
 using ZXing.Common;
 using ZXing.QrCode;
+using System.Linq;
 
 namespace Fuckshadows.View
 {
@@ -109,8 +110,8 @@ namespace Fuckshadows.View
 
             Icon newIcon;
 
-            bool hasInbound = controller.traffic.Last.inboundIncreasement > 0;
-            bool hasOutbound = controller.traffic.Last.outboundIncreasement > 0;
+            bool hasInbound = controller.trafficPerSecondQueue.Last().inboundIncreasement > 0;
+            bool hasOutbound = controller.trafficPerSecondQueue.Last().outboundIncreasement > 0;
 
             if (hasInbound && hasOutbound)
                 newIcon = _iconBoth;
@@ -121,9 +122,9 @@ namespace Fuckshadows.View
             else
                 newIcon = _iconBase;
 
-            if (newIcon != this._targetIcon)
+            if (newIcon != _targetIcon)
             {
-                this._targetIcon = newIcon;
+                _targetIcon = newIcon;
                 _notifyIcon.Icon = newIcon;
             }
         }
@@ -436,7 +437,7 @@ namespace Fuckshadows.View
             _onlinePacItem.Checked = _onlinePacItem.Enabled && config.useOnlinePac;
             _localPacItem.Checked = !_onlinePacItem.Checked;
             _secureLocalPacUrlToggleItem.Checked = config.secureLocalPac;
-            UpdatePACItemsEnabledStatus();
+            UpdatePacItemsEnabledStatus();
             UpdateUpdateMenu();
         }
 
@@ -450,8 +451,7 @@ namespace Fuckshadows.View
             int i = 0;
             foreach (var strategy in controller.GetStrategies())
             {
-                MenuItem item = new MenuItem(strategy.Name);
-                item.Tag = strategy.ID;
+                MenuItem item = new MenuItem(strategy.Name) {Tag = strategy.ID};
                 item.Click += AStrategyItem_Click;
                 items.Add(i, item);
                 i++;
@@ -464,8 +464,7 @@ namespace Fuckshadows.View
             Configuration configuration = controller.GetConfigurationCopy();
             foreach (var server in configuration.configs)
             {
-                MenuItem item = new MenuItem(server.FriendlyName());
-                item.Tag = i - strategyCount;
+                MenuItem item = new MenuItem(server.FriendlyName()) {Tag = i - strategyCount};
                 item.Click += AServerItem_Click;
                 items.Add(i, item);
                 i++;
@@ -735,7 +734,7 @@ namespace Fuckshadows.View
                             else if (result.Text.StartsWith("http://") || result.Text.StartsWith("https://"))
                             {
                                 _urlToOpen = result.Text;
-                                splash.FormClosed += openURLFromQRCode;
+                                splash.FormClosed += OpenUrlFromQrCode;
                             }
                             else
                             {
@@ -784,12 +783,12 @@ namespace Fuckshadows.View
             }
         }
 
-        void splash_FormClosed(object sender, FormClosedEventArgs e)
+        private void splash_FormClosed(object sender, FormClosedEventArgs e)
         {
             ShowConfigForm();
         }
 
-        void openURLFromQRCode(object sender, FormClosedEventArgs e)
+        private void OpenUrlFromQrCode(object sender, FormClosedEventArgs e)
         {
             Process.Start(_urlToOpen);
         }
@@ -810,7 +809,7 @@ namespace Fuckshadows.View
                 _localPacItem.Checked = true;
                 _onlinePacItem.Checked = false;
                 controller.UseOnlinePAC(false);
-                UpdatePACItemsEnabledStatus();
+                UpdatePacItemsEnabledStatus();
             }
         }
 
@@ -828,7 +827,7 @@ namespace Fuckshadows.View
                     _onlinePacItem.Checked = true;
                     controller.UseOnlinePAC(true);
                 }
-                UpdatePACItemsEnabledStatus();
+                UpdatePacItemsEnabledStatus();
             }
         }
 
@@ -838,7 +837,7 @@ namespace Fuckshadows.View
             string pacUrl = Microsoft.VisualBasic.Interaction.InputBox(
                 I18N.GetString("Please input PAC Url"),
                 I18N.GetString("Edit Online PAC URL"),
-                origPacUrl, -1, -1);
+                origPacUrl);
             if (!pacUrl.IsNullOrEmpty() && pacUrl != origPacUrl)
             {
                 controller.SavePACUrl(pacUrl);
@@ -856,7 +855,7 @@ namespace Fuckshadows.View
             controller.CopyPacUrl();
         }
 
-        private void UpdatePACItemsEnabledStatus()
+        private void UpdatePacItemsEnabledStatus()
         {
             if (this._localPacItem.Checked)
             {

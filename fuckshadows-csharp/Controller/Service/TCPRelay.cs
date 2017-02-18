@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Timers;
 using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
+using Fuckshadows.Encryption.Exception;
 using Fuckshadows.Model;
 using Fuckshadows.Proxy;
 using Fuckshadows.Util.Sockets;
@@ -123,10 +124,10 @@ namespace Fuckshadows.Controller
         private readonly int _proxyTimeout;
 
         // Size of receive buffer.
-        public static readonly int RecvSize = 8192;
+        public const int RecvSize = 8192;
         // TODO: calculate reserved bytes for AEADs
-        public static readonly int RecvReserveSize = 123; // reserve for one-time auth
-        public static readonly int BufferSize = RecvSize + RecvReserveSize + 32;
+        public const int RecvReserveSize = 123; // reserve for AEAD ciphers
+        public const int BufferSize = RecvSize + RecvReserveSize + 32;
 
         public DateTime lastActivity;
 
@@ -737,19 +738,11 @@ namespace Fuckshadows.Controller
             }
         }
 
-        // private static readonly Random Rnd = new Random();
-
         private void TryReadAvailableData()
         {
             int available = Math.Min(_connection.Available, RecvSize - _firstPacketLength);
             if (available > 0)
             {
-                // Pick a random chunk size, or is it truly necessary? Random packet size is some sort of 'characteristic' itself.
-                //lock (Rnd)
-                //{
-                //    available = Rnd.Next(available + 1);
-                //}
-
                 var size = _connection.Receive(_connetionRecvBuffer, _firstPacketLength, available,
                     SocketFlags.None);
 
@@ -764,7 +757,7 @@ namespace Fuckshadows.Controller
             {
                 _startReceivingTime = DateTime.Now;
                 session.Remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
-                    new AsyncCallback(PipeRemoteReceiveCallback), session);
+                    PipeRemoteReceiveCallback, session);
 
                 TryReadAvailableData();
                 Logging.Debug($"_firstPacketLength = {_firstPacketLength}");
@@ -789,13 +782,25 @@ namespace Fuckshadows.Controller
                 if (bytesRead > 0)
                 {
                     lastActivity = DateTime.Now;
-                    int bytesToSend;
+                    int bytesToSend = -1;
                     lock (_decryptionLock)
                     {
-                        _encryptor.Decrypt(_remoteRecvBuffer, bytesRead, _remoteSendBuffer, out bytesToSend);
+                        try
+                        {
+                            _encryptor.Decrypt(_remoteRecvBuffer, bytesRead, _remoteSendBuffer, out bytesToSend);
+                        }
+                        catch (CryptoNeedMoreException e)
+                        {
+                            // continue to recv
+                            throw new NotImplementedException();
+                        }
+                        catch (CryptoErrorException e)
+                        {
+                            Close();
+                        }
                     }
                     _connection.BeginSend(_remoteSendBuffer, 0, bytesToSend, SocketFlags.None,
-                        new AsyncCallback(PipeConnectionSendCallback), session);
+                        PipeConnectionSendCallback, session);
                     IStrategy strategy = _controller.GetCurrentStrategy();
                     strategy?.UpdateLastRead(_server);
                 }
@@ -852,7 +857,7 @@ namespace Fuckshadows.Controller
             _tcprelay.UpdateOutboundCounter(_server, bytesToSend);
             _startSendingTime = DateTime.Now;
             session.Remote.BeginSend(_connetionSendBuffer, 0, bytesToSend, SocketFlags.None,
-                new AsyncCallback(PipeRemoteSendCallback), session);
+                PipeRemoteSendCallback, session);
             IStrategy strategy = _controller.GetCurrentStrategy();
             strategy?.UpdateLastWrite(_server);
         }
@@ -865,7 +870,7 @@ namespace Fuckshadows.Controller
                 var session = (AsyncSession) ar.AsyncState;
                 session.Remote.EndSend(ar);
                 _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
-                    new AsyncCallback(PipeConnectionReceiveCallback), session);
+                    PipeConnectionReceiveCallback, session);
             }
             catch (Exception e)
             {
@@ -881,7 +886,7 @@ namespace Fuckshadows.Controller
                 var session = (AsyncSession) ar.AsyncState;
                 _connection.EndSend(ar);
                 session.Remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
-                    new AsyncCallback(PipeRemoteReceiveCallback), session);
+                    PipeRemoteReceiveCallback, session);
             }
             catch (Exception e)
             {
