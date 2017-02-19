@@ -1,6 +1,6 @@
 # translation for Traditional Chinese
 
-Shadowsocks=Shadowsocks
+Fuckshadows=Fuckshadows
 
 # Menu items
 
@@ -73,9 +73,7 @@ Proxy Port=Proxy 連接埠
 &File=檔案 (&F)
 &Open Location=在檔案總管中開啟 (&O)
 E&xit=結束 (&X)
-&View=檢視
-
-(&V)
+&View=檢視 (&V)
 &Clean Logs=清除記錄檔 (&C)
 Change &Font=變更字型 (&F)
 &Wrap Text=自動換行 (&W)
@@ -107,7 +105,7 @@ Reg All=註冊所有快速鍵
 
 # Messages
 
-Shadowsocks Error: {0}=Shadowsocks 錯誤: {0}
+Fuckshadows Error: {0}=Fuckshadows 錯誤: {0}
 Port already in use=連接埠號碼已被使用
 Invalid server address=無效伺服器位址
 Illegal port number format=無效連接埠號碼格式
@@ -117,25 +115,25 @@ Server IP can not be blank=伺服器 IP 不能為空
 Password can not be blank=密碼不能為空
 Port out of range=連接埠號碼超出範圍
 Port can't be 8123=連接埠號碼不能為 8123
-Shadowsocks {0} Update Found=Shadowsocks {0} 更新
+Fuckshadows {0} Update Found=Fuckshadows {0} 更新
 No update is available=沒有可用的更新
 Click here to update=點按此處升級
-Shadowsocks is here=Shadowsocks 在這裡
-You can turn on/off Shadowsocks in the context menu=可以在右鍵選項單中開關 Shadowsocks
+Fuckshadows is here=Fuckshadows 在這裡
+You can turn on/off Fuckshadows in the context menu=可以在右鍵選項單中開關 Fuckshadows
 System Proxy Enabled=系統 Proxy 已啟用
 System Proxy Disabled=系統 Proxy 未啟用
 Failed to update PAC file =更新 PAC 檔案失敗
 PAC updated=更新 PAC 成功
 No updates found. Please report to GFWList if you have problems with it.=未發現更新。如有問題請報告至 GFWList。
 No QRCode found. Try to zoom in or move it to the center of the screen.=未發現 QR 碼，嘗試把它放大或移動到靠近熒幕中間的位置
-Shadowsocks is already running.=Shadowsocks 已經在執行。
-Find Shadowsocks icon in your notify tray.=請在工作列裡尋找 Shadowsocks 圖示。
-If you want to start multiple Shadowsocks, make a copy in another directory.=如果想同時啟動多個，可以另外複製一份至別的目錄。
+Fuckshadows is already running.=Fuckshadows 已經在執行。
+Find Fuckshadows icon in your notify tray.=請在工作列裡尋找 Fuckshadows 圖示。
+If you want to start multiple Fuckshadows, make a copy in another directory.=如果想同時啟動多個，可以另外複製一份至別的目錄。
 Failed to decode QRCode=QR 碼解碼失敗
 Failed to update registry=無法修改登錄檔
 System Proxy On: =系統 Proxy 已啟用：
 Running: Port {0}=正在執行：連接埠號碼 {0}
-Unexpected error, shadowsocks will exit. Please report to=非預期錯誤，Shadowsocks 將結束。請報告此錯誤至
+Unexpected error, fuckshadows will exit. Please report to=非預期錯誤，Fuckshadows 將結束。請報告此錯誤至
 Unsupported operating system, use Windows Vista at least.=不支援的作業系統版本，最低需求為 Windows Vista。
 Unsupported .NET Framework, please update to 4.6.2 or later.=目前 .NET Framework 版本過低，最低需求為4.6.2。
 Proxy request failed=Proxy 要求失敗

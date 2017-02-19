@@ -7,7 +7,6 @@ TestResults
 *.suo
 
 fuckshadows-csharp/3rd/*
-!fuckshadows-csharp/3rd/zxing/
 packages/*
 
 fuckshadows-csharp.sln.DotSettings.user

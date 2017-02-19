@@ -9,17 +9,25 @@ namespace Fuckshadows.Encryption
 {
     public class MbedTLS
     {
-        const string DLLNAME = "libfscrypto";
+#if _X64
+        private const string DLLNAME = "libfscrypto64.dll";
+#else
+        private const string DLLNAME = "libfscrypto.dll";
+#endif
 
         public const int MBEDTLS_ENCRYPT = 1;
         public const int MBEDTLS_DECRYPT = 0;
 
         static MbedTLS()
         {
-            string dllPath = Utils.GetTempPath("libfscrypto.dll");
+            string dllPath = Utils.GetTempPath(DLLNAME);
             try
             {
+#if _X64
+                FileManager.UncompressFile(dllPath, Resources.libfscrypto64_dll);
+#else
                 FileManager.UncompressFile(dllPath, Resources.libfscrypto_dll);
+#endif
             }
             catch (IOException)
             {
@@ -45,7 +53,7 @@ namespace Fuckshadows.Encryption
         public static extern void md5(byte[] input, uint ilen, byte[] output);
 
         /// <summary>
-        /// Get cipher ctx size for memory allocation
+        /// Get cipher ctx size for unmanaged memory allocation
         /// </summary>
         /// <returns></returns>
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
@@ -80,19 +88,19 @@ namespace Fuckshadows.Encryption
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_auth_encrypt(IntPtr ctx,
-            byte[] iv, int iv_len,
-            IntPtr ad, int ad_len,
-            byte[] input, int ilen,
-            byte[] output, ref int olen,
-            byte[] tag, int tag_len);
+            byte[] iv, uint iv_len,
+            IntPtr ad, uint ad_len,
+            byte[] input, uint ilen,
+            byte[] output, ref uint olen,
+            byte[] tag, uint tag_len);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_auth_decrypt(IntPtr ctx,
-            byte[] iv, int iv_len,
-            IntPtr ad, int ad_len,
-            byte[] input, int ilen,
-            byte[] output, ref int olen,
-            byte[] tag, int tag_len);
+            byte[] iv, uint iv_len,
+            IntPtr ad, uint ad_len,
+            byte[] input, uint ilen,
+            byte[] output, ref uint olen,
+            byte[] tag, uint tag_len);
 
         #endregion
     }

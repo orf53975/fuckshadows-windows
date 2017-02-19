@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Fuckshadows.Controller;
@@ -30,16 +31,12 @@ namespace Fuckshadows.Util
         // return path to store temporary files
         public static string GetTempPath()
         {
-            if (_tempPath == null)
-            {
-                try
-                {
+            if (_tempPath == null) {
+                try {
                     Directory.CreateDirectory(Path.Combine(Application.StartupPath, "fs_win_temp"));
                     // don't use "/", it will fail when we call explorer /select xxx/fs_win_temp\xxx.log
                     _tempPath = Path.Combine(Application.StartupPath, "fs_win_temp");
-                }
-                catch (Exception e)
-                {
+                } catch (Exception e) {
                     Logging.Error(e);
                     throw;
                 }
@@ -48,21 +45,15 @@ namespace Fuckshadows.Util
         }
 
         // return a full path with filename combined which pointed to the temporary directory
-        public static string GetTempPath(string filename)
-        {
-            return Path.Combine(GetTempPath(), filename);
-        }
+        public static string GetTempPath(string filename) { return Path.Combine(GetTempPath(), filename); }
 
         public static string UnGzip(byte[] buf)
         {
             byte[] buffer = new byte[1024];
             int n;
-            using (MemoryStream sb = new MemoryStream())
-            {
-                using (GZipStream input = new GZipStream(new MemoryStream(buf), CompressionMode.Decompress, false))
-                {
-                    while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
-                    {
+            using (MemoryStream sb = new MemoryStream()) {
+                using (GZipStream input = new GZipStream(new MemoryStream(buf), CompressionMode.Decompress, false)) {
+                    while ((n = input.Read(buffer, 0, buffer.Length)) > 0) {
                         sb.Write(buffer, 0, n);
                     }
                 }
@@ -91,24 +82,19 @@ namespace Fuckshadows.Util
                 return (bytes / (double) P).ToString("F5") + "PiB";
             if (bytes >= G * 990)
                 return (bytes / (double) T).ToString("F5") + "TiB";
-            if (bytes >= M * 990)
-            {
+            if (bytes >= M * 990) {
                 return (bytes / (double) G).ToString("F4") + "GiB";
             }
-            if (bytes >= M * 100)
-            {
+            if (bytes >= M * 100) {
                 return (bytes / (double) M).ToString("F1") + "MiB";
             }
-            if (bytes >= M * 10)
-            {
+            if (bytes >= M * 10) {
                 return (bytes / (double) M).ToString("F2") + "MiB";
             }
-            if (bytes >= K * 990)
-            {
+            if (bytes >= K * 990) {
                 return (bytes / (double) M).ToString("F3") + "MiB";
             }
-            if (bytes > K * 2)
-            {
+            if (bytes > K * 2) {
                 return (bytes / (double) K).ToString("F1") + "KiB";
             }
             return bytes.ToString() + "B";
@@ -126,26 +112,22 @@ namespace Fuckshadows.Util
             long scale = 1;
             float f = n;
             string unit = "B";
-            if (f > 1024)
-            {
+            if (f > 1024) {
                 f = f / 1024;
                 scale <<= 10;
                 unit = "KiB";
             }
-            if (f > 1024)
-            {
+            if (f > 1024) {
                 f = f / 1024;
                 scale <<= 10;
                 unit = "MiB";
             }
-            if (f > 1024)
-            {
+            if (f > 1024) {
                 f = f / 1024;
                 scale <<= 10;
                 unit = "GiB";
             }
-            if (f > 1024)
-            {
+            if (f > 1024) {
                 f = f / 1024;
                 scale <<= 10;
                 unit = "TiB";
@@ -159,29 +141,21 @@ namespace Fuckshadows.Util
             // cause problem when opening registry key
             // detect operating system instead of CPU
             if (name.IsNullOrEmpty()) throw new ArgumentException(nameof(name));
-            try
-            {
+            try {
                 RegistryKey userKey = RegistryKey.OpenBaseKey(hive,
-                        Environment.Is64BitOperatingSystem ? RegistryView.Registry64 : RegistryView.Registry32)
-                    .OpenSubKey(name, writable);
+                                                              Environment.Is64BitOperatingSystem ? RegistryView.Registry64 : RegistryView.Registry32)
+                                                 .OpenSubKey(name, writable);
                 return userKey;
-            }
-            catch (ArgumentException ae)
-            {
+            } catch (ArgumentException ae) {
                 MessageBox.Show("OpenRegKey: " + ae.ToString());
                 return null;
-            }
-            catch (Exception e)
-            {
+            } catch (Exception e) {
                 Logging.LogUsefulException(e);
                 return null;
             }
         }
 
-        public static bool IsWinVistaOrHigher()
-        {
-            return Environment.OSVersion.Version.Major > 5;
-        }
+        public static bool IsWinVistaOrHigher() { return Environment.OSVersion.Version.Major > 5; }
 
         // See: https://msdn.microsoft.com/en-us/library/hh925568(v=vs.110).aspx
         public static bool IsSupportedRuntimeVersion()
@@ -197,19 +171,127 @@ namespace Fuckshadows.Util
             const int minSupportedRelease = 394802;
 
             const string subkey = @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\";
-            using (var ndpKey = OpenRegKey(subkey, false, RegistryHive.LocalMachine))
-            {
-                if (ndpKey?.GetValue("Release") != null)
-                {
+            using (var ndpKey = OpenRegKey(subkey, false, RegistryHive.LocalMachine)) {
+                if (ndpKey?.GetValue("Release") != null) {
                     var releaseKey = (int) ndpKey.GetValue("Release");
 
-                    if (releaseKey >= minSupportedRelease)
-                    {
+                    if (releaseKey >= minSupportedRelease) {
                         return true;
                     }
                 }
             }
             return false;
         }
+
+        #region BufferBlockCopy Wrapper
+
+        /*
+         * Usage: enable [allow unsafe code] and define INCLUDE_UNSAFE
+         */
+        private const int BufferBlockCopyThreshold = 1024;
+#if INCLUDE_UNSAFE
+        private const int UnmanagedThreshold = 128;
+#endif
+
+        /// <summary>
+        /// Copy bytes effectively, if you are sure length is less than or equal to
+        /// BufferBlockCopyThreshold, use the corresponding method directly
+        /// </summary>
+        /// <param name="src"></param>
+        /// <param name="srcOff"></param>
+        /// <param name="dst"></param>
+        /// <param name="dstOff"></param>
+        /// <param name="length"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void PerfByteCopy(byte[] src, int srcOff, byte[] dst, int dstOff, int length)
+        {
+#if INCLUDE_UNSAFE
+            if (length >= UnmanagedThreshold) {
+                unsafe {
+                    fixed (byte* srcPtr = &src[srcOff]) {
+                        fixed (byte* dstPtr = &dst[dstOff]) {
+                            CopyMemory(srcPtr, dstPtr, length);
+                        }
+                    }
+                }
+            } else {
+#endif
+                if (length >= BufferBlockCopyThreshold) {
+                    Buffer.BlockCopy(src, srcOff, dst, dstOff, length);
+                } else {
+                    Array.Copy(src, srcOff, dst, dstOff, length);
+                }
+#if INCLUDE_UNSAFE
+            }
+#endif
+        }
+
+#if INCLUDE_UNSAFE
+
+        /// <summary>
+        ///     Copy data from <paramref name="srcPtr" /> into <paramref name="dstPtr" />.
+        /// </summary>
+        /// <remarks>
+        ///     If <paramref name="srcPtr" /> or <paramref name="dstPtr" /> are not originally for byte-oriented data,
+        ///     length will need to be adjusted accordingly, e.g. UInt32 pointer vs. byte pointer = 4x length.
+        ///     Method auto-optimises for word size (32/64-bit) on the machine ISA.
+        /// </remarks>
+        /// <param name="srcPtr">Pointer to source of data.</param>
+        /// <param name="dstPtr">Pointer to destination for data.</param>
+        /// <param name="length">Length/quantity of data to copy, in bytes.</param>
+        public static unsafe void CopyMemory(byte* srcPtr, byte* dstPtr, int length)
+        {
+            const int u32Size = sizeof(UInt32);
+            const int u64Size = sizeof(UInt64);
+
+            byte* srcEndPtr = srcPtr + length;
+
+            if (IntPtr.Size == u32Size) {
+                // 32-bit
+                while (srcPtr + u64Size <= srcEndPtr) {
+                    * (UInt32*) dstPtr = * (UInt32*) srcPtr;
+                    dstPtr += u32Size;
+                    srcPtr += u32Size;
+                    * (UInt32*) dstPtr = * (UInt32*) srcPtr;
+                    dstPtr += u32Size;
+                    srcPtr += u32Size;
+                }
+            } else if (IntPtr.Size == u64Size) {
+                // 64-bit
+                const int u128Size = sizeof(UInt64) * 2;
+                while (srcPtr + u128Size <= srcEndPtr) {
+                    * (UInt64*) dstPtr = * (UInt64*) srcPtr;
+                    dstPtr += u64Size;
+                    srcPtr += u64Size;
+                    * (UInt64*) dstPtr = * (UInt64*) srcPtr;
+                    dstPtr += u64Size;
+                    srcPtr += u64Size;
+                }
+                if (srcPtr + u64Size <= srcEndPtr) {
+                    * (UInt64*) dstPtr ^= * (UInt64*) srcPtr;
+                    dstPtr += u64Size;
+                    srcPtr += u64Size;
+                }
+            }
+
+            if (srcPtr + u32Size <= srcEndPtr) {
+                * (UInt32*) dstPtr = * (UInt32*) srcPtr;
+                dstPtr += u32Size;
+                srcPtr += u32Size;
+            }
+
+            if (srcPtr + sizeof(UInt16) <= srcEndPtr) {
+                * (UInt16*) dstPtr = * (UInt16*) srcPtr;
+                dstPtr += sizeof(UInt16);
+                srcPtr += sizeof(UInt16);
+            }
+
+            if (srcPtr + 1 <= srcEndPtr) {
+                * dstPtr = * srcPtr;
+            }
+        }
+#endif
+
+        #endregion
     }
 }

@@ -430,5 +430,17 @@ namespace Fuckshadows.View
             ToolbarFlowLayoutPanel.Visible = toolbarTrigger;
             ShowToolbarMenuItem.Checked = toolbarTrigger;
         }
+
+        private class TrafficInfo
+        {
+            public long inbound;
+            public long outbound;
+
+            public TrafficInfo(long inbound, long outbound)
+            {
+                this.inbound = inbound;
+                this.outbound = outbound;
+            }
+        }
     }
 }

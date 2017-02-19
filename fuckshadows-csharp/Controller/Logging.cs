@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Net;
 using System.Diagnostics;
+using System.Text;
 using Fuckshadows.Util;
 
 namespace Fuckshadows.Controller
@@ -19,7 +20,7 @@ namespace Fuckshadows.Controller
         {
             try
             {
-                LogFilePath = Utils.GetTempPath("shadowsocks.log");
+                LogFilePath = Utils.GetTempPath("fuckshadows.log");
 
                 _fs = new FileStream(LogFilePath, FileMode.Append);
                 _sw = new StreamWriterWithTimestamp(_fs);
@@ -70,13 +71,25 @@ namespace Fuckshadows.Controller
         }
 
         [Conditional("DEBUG")]
+        public static void Dump(string tag, byte[] arr, int length)
+        {
+            var sb = new StringBuilder($"{Environment.NewLine}{tag}: ");
+            for (int i = 0; i < length - 1; i++) {
+                sb.Append($"0x{arr[i]:X2}, ");
+            }
+            sb.Append($"0x{arr[length - 1]:X2}");
+            sb.Append(Environment.NewLine);
+            Debug(sb.ToString());
+        }
+
+        [Conditional("DEBUG")]
         public static void Debug(EndPoint local, EndPoint remote, int len, string header = null, string tailer = null)
         {
             if (header == null && tailer == null)
                 Debug($"{local} => {remote} (size={len})");
-            else if (header == null && tailer != null)
+            else if (header == null)
                 Debug($"{local} => {remote} (size={len}), {tailer}");
-            else if (header != null && tailer == null)
+            else if (tailer == null)
                 Debug($"{header}: {local} => {remote} (size={len})");
             else
                 Debug($"{header}: {local} => {remote} (size={len}), {tailer}");
@@ -149,7 +162,7 @@ namespace Fuckshadows.Controller
 
         private string GetTimestamp()
         {
-            return "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ";
+            return $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ";
         }
 
         public override void WriteLine(string value)

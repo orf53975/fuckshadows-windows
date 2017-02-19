@@ -12,7 +12,7 @@ namespace Fuckshadows.Controller
         // see https://stackoverflow.com/questions/12945805/odd-c-sharp-path-issue
         private static readonly string ExecutablePath = Assembly.GetEntryAssembly().Location;
 
-        private static string Key = "Shadowsocks_" + Application.StartupPath.GetHashCode();
+        private static string Key = "Fuckshadows_" + Application.StartupPath.GetHashCode();
 
         public static bool Set(bool enabled)
         {
@@ -67,7 +67,7 @@ namespace Fuckshadows.Controller
                 {
                     if (item.Equals(Key, StringComparison.OrdinalIgnoreCase))
                         return true;
-                    else if (item.Equals("Shadowsocks", StringComparison.OrdinalIgnoreCase)) // Compatibility with older versions
+                    else if (item.Equals("Fuckshadows", StringComparison.OrdinalIgnoreCase)) // Compatibility with older versions
                     {
                         string value = Convert.ToString(runKey.GetValue(item));
                         if (ExecutablePath.Equals(value, StringComparison.OrdinalIgnoreCase))

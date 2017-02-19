@@ -132,7 +132,7 @@ namespace Fuckshadows.View
         private void controller_Errored(object sender, System.IO.ErrorEventArgs e)
         {
             MessageBox.Show(e.GetException().ToString(),
-                String.Format(I18N.GetString("Shadowsocks Error: {0}"), e.GetException().Message));
+                String.Format(I18N.GetString("Fuckshadows Error: {0}"), e.GetException().Message));
         }
 
         #region Tray Icon
@@ -181,12 +181,12 @@ namespace Fuckshadows.View
                 serverInfo = config.GetCurrentServer().FriendlyName();
             }
             // show more info by hacking the P/Invoke declaration for NOTIFYICONDATA inside Windows Forms
-            string text = I18N.GetString("Shadowsocks") + " " + UpdateChecker.Version + "\n" +
+            string text = I18N.GetString("Fuckshadows") + " " + UpdateChecker.Version + "\n" +
                           (enabled
                               ? I18N.GetString("System Proxy On: ") +
                                 (global ? I18N.GetString("Global") : I18N.GetString("PAC"))
                               : String.Format(I18N.GetString("Running: Port {0}"), config.localPort))
-                          // this feedback is very important because they need to know Shadowsocks is running
+                          // this feedback is very important because they need to know Fuckshadows is running
                           + "\n" + serverInfo;
             ViewUtils.SetNotifyIconText(_notifyIcon, text);
         }
@@ -382,7 +382,7 @@ namespace Fuckshadows.View
             string result = e.Success
                 ? I18N.GetString("PAC updated")
                 : I18N.GetString("No updates found. Please report to GFWList if you have problems with it.");
-            ShowBalloonTip(I18N.GetString("Shadowsocks"), result, ToolTipIcon.Info, 1000);
+            ShowBalloonTip(I18N.GetString("Fuckshadows"), result, ToolTipIcon.Info, 1000);
         }
 
         void updateChecker_CheckUpdateCompleted(object sender, EventArgs e)
@@ -390,13 +390,13 @@ namespace Fuckshadows.View
             if (updateChecker.NewVersionFound)
             {
                 ShowBalloonTip(
-                    String.Format(I18N.GetString("Shadowsocks {0} Update Found"),
+                    String.Format(I18N.GetString("Fuckshadows {0} Update Found"),
                         updateChecker.LatestVersionNumber + updateChecker.LatestVersionSuffix),
                     I18N.GetString("Click here to update"), ToolTipIcon.Info, 5000);
             }
             else if (!_isStartupChecking)
             {
-                ShowBalloonTip(I18N.GetString("Shadowsocks"), I18N.GetString("No update is available"), ToolTipIcon.Info,
+                ShowBalloonTip(I18N.GetString("Fuckshadows"), I18N.GetString("No update is available"), ToolTipIcon.Info,
                     5000);
             }
             _isStartupChecking = false;
@@ -593,15 +593,15 @@ namespace Fuckshadows.View
 
         private void ShowFirstTimeBalloon()
         {
-            _notifyIcon.BalloonTipTitle = I18N.GetString("Shadowsocks is here");
-            _notifyIcon.BalloonTipText = I18N.GetString("You can turn on/off Shadowsocks in the context menu");
+            _notifyIcon.BalloonTipTitle = I18N.GetString("Fuckshadows is here");
+            _notifyIcon.BalloonTipText = I18N.GetString("You can turn on/off Fuckshadows in the context menu");
             _notifyIcon.BalloonTipIcon = ToolTipIcon.Info;
             _notifyIcon.ShowBalloonTip(0);
         }
 
         private void AboutItem_Click(object sender, EventArgs e)
         {
-            Process.Start("https://github.com/shadowsocks/shadowsocks-windows");
+            Process.Start("https://github.com/Fuckshadows/Fuckshadows-windows");
         }
 
         private void notifyIcon1_Click(object sender, MouseEventArgs e)

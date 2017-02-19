@@ -26,7 +26,7 @@ namespace Fuckshadows
             if (!Utils.IsWinVistaOrHigher())
             {
                 MessageBox.Show(I18N.GetString("Unsupported operating system, use Windows Vista at least."),
-                    "Shadowsocks Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Fuckshadows Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -34,14 +34,14 @@ namespace Fuckshadows
             if (!Utils.IsSupportedRuntimeVersion())
             {
                 MessageBox.Show(I18N.GetString("Unsupported .NET Framework, please update to 4.6.2 or later."),
-                    "Shadowsocks Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Fuckshadows Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 
                 Process.Start(
                     "http://dotnetsocial.cloudapp.net/GetDotnet?tfm=.NETFramework,Version=v4.6.2");
                 return;
             }
 
-            using (Mutex mutex = new Mutex(false, $"Global\\Shadowsocks_{Application.StartupPath.GetHashCode()}"))
+            using (Mutex mutex = new Mutex(false, $"Global\\Fuckshadows_{Application.StartupPath.GetHashCode()}"))
             {
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
                 // handle UI exceptions
@@ -55,17 +55,17 @@ namespace Fuckshadows
 
                 if (!mutex.WaitOne(0, false))
                 {
-                    Process[] oldProcesses = Process.GetProcessesByName("Shadowsocks");
+                    Process[] oldProcesses = Process.GetProcessesByName("Fuckshadows");
                     if (oldProcesses.Length > 0)
                     {
                         Process oldProcess = oldProcesses[0];
                     }
-                    MessageBox.Show(I18N.GetString("Find Shadowsocks icon in your notify tray.")
+                    MessageBox.Show(I18N.GetString("Find Fuckshadows icon in your notify tray.")
                                     + Environment.NewLine
                                     +
                                     I18N.GetString(
-                                        "If you want to start multiple Shadowsocks, make a copy in another directory."),
-                        I18N.GetString("Shadowsocks is already running."));
+                                        "If you want to start multiple Fuckshadows, make a copy in another directory."),
+                        I18N.GetString("Fuckshadows is already running."));
                     return;
                 }
                 Directory.SetCurrentDirectory(Application.StartupPath);
@@ -98,8 +98,8 @@ namespace Fuckshadows
                 string errMsg = e.ExceptionObject.ToString();
                 Logging.Error(errMsg);
                 MessageBox.Show(
-                    $"{I18N.GetString("Unexpected error, shadowsocks will exit. Please report to")} https://github.com/shadowsocks/shadowsocks-windows/issues {Environment.NewLine}{errMsg}",
-                    "Shadowsocks non-UI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    $"{I18N.GetString("Unexpected error, fuckshadows will exit. Please report to")} https://github.com/Fuckshadows/Fuckshadows-windows/issues {Environment.NewLine}{errMsg}",
+                    "Fuckshadows non-UI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
             }
         }
@@ -111,8 +111,8 @@ namespace Fuckshadows
                 string errorMsg = $"Exception Detail: {Environment.NewLine}{e.Exception}";
                 Logging.Error(errorMsg);
                 MessageBox.Show(
-                    $"{I18N.GetString("Unexpected error, shadowsocks will exit. Please report to")} https://github.com/shadowsocks/shadowsocks-windows/issues {Environment.NewLine}{errorMsg}",
-                    "Shadowsocks UI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    $"{I18N.GetString("Unexpected error, fuckshadows will exit. Please report to")} https://github.com/Fuckshadows/Fuckshadows-windows/issues {Environment.NewLine}{errorMsg}",
+                    "Fuckshadows UI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
             }
         }

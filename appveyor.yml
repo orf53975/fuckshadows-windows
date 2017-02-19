@@ -1,17 +1,30 @@
 version: 1.0.{build}
 image: Visual Studio 2015
-configuration:
-- Debug
-- Release
-platform: x86
+environment:
+  matrix:
+    - platform: x86
+      configuration: Debug
+    - platform: x86
+      configuration: Release
+    - platform: x64
+      configuration: Debug
+    - platform: x64
+      configuration: Release
+matrix:
+  fast_finish: false
 nuget:
   project_feed: true
 before_build:
 - cmd: nuget restore
 build:
+  parallel: true
   verbosity: normal
 artifacts:
 - path: fuckshadows-csharp\bin\x86\Release\Fuckshadows.exe
-  name: Fuckshadows-release.exe
+  name: Fuckshadows-release32.exe
 - path: fuckshadows-csharp\bin\x86\Debug\Fuckshadows.exe
-  name: Fuckshadows-debug.exe
+  name: Fuckshadows-debug32.exe
+- path: fuckshadows-csharp\bin\x64\Release\Fuckshadows.exe
+  name: Fuckshadows-release64.exe
+- path: fuckshadows-csharp\bin\x64\Debug\Fuckshadows.exe
+  name: Fuckshadows-debug64.exe

@@ -62,7 +62,30 @@
     <Prefer32Bit>false</Prefer32Bit>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;_X64</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>false</Prefer32Bit>
+    <CodeAnalysisRuleSet>ManagedMinimumRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE;_X64</DefineConstants>
+    <Optimize>true</Optimize>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>ManagedMinimumRules.ruleset</CodeAnalysisRuleSet>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
   <PropertyGroup>
+    <DisableOutOfProcTaskHost>true</DisableOutOfProcTaskHost>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
@@ -86,63 +109,21 @@
     <Reference Include="System.Windows.Forms.DataVisualization" />
     <Reference Include="System.XML" />
     <Reference Include="WindowsBase" />
+    <Reference Include="zxing, Version=0.15.0.0, Culture=neutral, PublicKeyToken=4e88037ac681fe60, processorArchitecture=MSIL">
+      <HintPath>3rd\ZXing.Net.0.15.0\lib\net461\zxing.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="zxing.presentation, Version=0.15.0.0, Culture=neutral, PublicKeyToken=4e88037ac681fe60, processorArchitecture=MSIL">
+      <HintPath>3rd\ZXing.Net.0.15.0\lib\net461\zxing.presentation.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="3rd\zxing\BarcodeFormat.cs" />
-    <Compile Include="3rd\zxing\BaseLuminanceSource.cs" />
-    <Compile Include="3rd\zxing\Binarizer.cs" />
-    <Compile Include="3rd\zxing\BinaryBitmap.cs" />
-    <Compile Include="3rd\zxing\BitmapLuminanceSource.cs" />
-    <Compile Include="3rd\zxing\common\BitArray.cs" />
-    <Compile Include="3rd\zxing\common\BitMatrix.cs" />
-    <Compile Include="3rd\zxing\common\BitSource.cs" />
-    <Compile Include="3rd\zxing\common\DecoderResult.cs" />
-    <Compile Include="3rd\zxing\common\DefaultGridSampler.cs" />
-    <Compile Include="3rd\zxing\common\DetectorResult.cs" />
-    <Compile Include="3rd\zxing\common\detector\MathUtils.cs" />
-    <Compile Include="3rd\zxing\common\GlobalHistogramBinarizer.cs" />
-    <Compile Include="3rd\zxing\common\GridSampler.cs" />
-    <Compile Include="3rd\zxing\common\HybridBinarizer.cs" />
-    <Compile Include="3rd\zxing\common\PerspectiveTransform.cs" />
-    <Compile Include="3rd\zxing\common\reedsolomon\GenericGF.cs" />
-    <Compile Include="3rd\zxing\common\reedsolomon\GenericGFPoly.cs" />
-    <Compile Include="3rd\zxing\common\reedsolomon\ReedSolomonDecoder.cs" />
-    <Compile Include="3rd\zxing\common\reedsolomon\ReedSolomonEncoder.cs" />
-    <Compile Include="3rd\zxing\common\StringUtils.cs" />
-    <Compile Include="3rd\zxing\DecodeHintType.cs" />
-    <Compile Include="3rd\zxing\EncodeHintType.cs" />
-    <Compile Include="3rd\zxing\LuminanceSource.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\BitMatrixParser.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\DataBlock.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\DataMask.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\DecodedBitStreamParser.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\Decoder.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\ErrorCorrectionLevel.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\FormatInformation.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\Mode.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\QRCodeDecoderMetaData.cs" />
-    <Compile Include="3rd\zxing\qrcode\decoder\Version.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\AlignmentPattern.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\AlignmentPatternFinder.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\Detector.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\FinderPattern.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\FinderPatternFinder.cs" />
-    <Compile Include="3rd\zxing\qrcode\detector\FinderPatternInfo.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\BlockPair.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\ByteMatrix.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\Encoder.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\MaskUtil.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\MatrixUtil.cs" />
-    <Compile Include="3rd\zxing\qrcode\encoder\QRCode.cs" />
-    <Compile Include="3rd\zxing\qrcode\QRCodeReader.cs" />
-    <Compile Include="3rd\zxing\Result.cs" />
-    <Compile Include="3rd\zxing\ResultMetadataType.cs" />
-    <Compile Include="3rd\zxing\ResultPoint.cs" />
-    <Compile Include="3rd\zxing\ResultPointCallback.cs" />
-    <Compile Include="3rd\zxing\WriterException.cs" />
     <Compile Include="Controller\System\Hotkeys\HotkeyCallbacks.cs" />
     <Compile Include="Encryption\AEAD\AEADEncryptor.cs" />
     <Compile Include="Encryption\AEAD\AEADMbedTLSEncryptor.cs" />
+    <Compile Include="Encryption\AEAD\AEADSodiumEncryptor.cs" />
+    <Compile Include="Encryption\CircularBuffer\ByteCircularBuffer.cs" />
     <Compile Include="Encryption\Exception\CryptoException.cs" />
     <Compile Include="Model\HotKeyConfig.cs" />
     <Compile Include="Model\ProxyConfig.cs" />
@@ -287,6 +268,7 @@
     </None>
     <None Include="Data\abp.js.gz" />
     <None Include="Data\libfscrypto.dll.gz" />
+    <None Include="Data\libfscrypto64.dll.gz" />
     <None Include="Data\mgwz.dll.gz" />
     <None Include="Data\privoxy.exe.gz" />
     <None Include="Data\proxy.pac.txt.gz" />

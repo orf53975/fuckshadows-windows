@@ -7,7 +7,6 @@ using System.Net.Sockets;
 using Fuckshadows.Model;
 
 // TODO: check IPv6 connections
-// TODO: refine re-recv by using ring buffer?
 namespace Fuckshadows.Controller
 {
     public class Listener
@@ -85,10 +84,9 @@ namespace Fuckshadows.Controller
                 _tcpSocket.Listen(1024);
 
                 // Start an asynchronous socket to listen for connections.
-                Logging.Info("Shadowsocks started");
+                Logging.Info("Fuckshadows started");
                 _tcpSocket.BeginAccept(new AsyncCallback(AcceptCallback), _tcpSocket);
-                UDPState udpState = new UDPState();
-                udpState.socket = _udpSocket;
+                UDPState udpState = new UDPState { socket = _udpSocket };
                 _udpSocket.BeginReceiveFrom(udpState.buffer, 0, udpState.buffer.Length, 0, ref udpState.remoteEndPoint, new AsyncCallback(RecvFromCallback), udpState);
             }
             catch (SocketException)

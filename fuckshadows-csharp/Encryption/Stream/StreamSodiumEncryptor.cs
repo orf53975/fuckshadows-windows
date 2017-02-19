@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using Fuckshadows.Encryption.Exception;
+using static Fuckshadows.Util.Utils;
 
 namespace Fuckshadows.Encryption.Stream
 {
@@ -42,15 +44,16 @@ namespace Fuckshadows.Encryption.Stream
             return new List<string>(_ciphers.Keys);
         }
 
-        protected override void cipherUpdate(bool isCipher, int length, byte[] buf, byte[] outbuf)
+        protected override void cipherUpdate(bool isEncrypt, int length, byte[] buf, byte[] outbuf)
         {
             // TODO write a unidirection cipher so we don't have to if if if
             int bytesRemaining;
             ulong ic;
             byte[] sodiumBuf;
             byte[] iv;
+            int ret = -1;
 
-            if (isCipher)
+            if (isEncrypt)
             {
                 bytesRemaining = _encryptBytesRemaining;
                 ic = _encryptIC;
@@ -65,26 +68,28 @@ namespace Fuckshadows.Encryption.Stream
                 iv = _decryptIV;
             }
             int padding = bytesRemaining;
-            Buffer.BlockCopy(buf, 0, sodiumBuf, padding, length);
+            PerfByteCopy(buf, 0, sodiumBuf, padding, length);
 
             switch (_cipher)
             {
                 case CIPHER_SALSA20:
-                    Sodium.crypto_stream_salsa20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
+                    ret = Sodium.crypto_stream_salsa20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
                     break;
                 case CIPHER_CHACHA20:
-                    Sodium.crypto_stream_chacha20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
+                    ret = Sodium.crypto_stream_chacha20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
                     break;
                 case CIPHER_CHACHA20_IETF:
-                    Sodium.crypto_stream_chacha20_ietf_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, (uint)ic, _key);
+                    ret = Sodium.crypto_stream_chacha20_ietf_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, (uint)ic, _key);
                     break;
             }
-            Buffer.BlockCopy(sodiumBuf, padding, outbuf, 0, length);
+            if (ret != 0) throw new CryptoErrorException();
+
+            PerfByteCopy(sodiumBuf, padding, outbuf, 0, length);
             padding += length;
             ic += (ulong)padding / SODIUM_BLOCK_SIZE;
             bytesRemaining = padding % SODIUM_BLOCK_SIZE;
 
-            if (isCipher)
+            if (isEncrypt)
             {
                 _encryptBytesRemaining = bytesRemaining;
                 _encryptIC = ic;
