@@ -1,0 +1,17 @@
+version: 1.0.{build}
+image: Visual Studio 2015
+configuration:
+- Debug
+- Release
+platform: x86
+nuget:
+  project_feed: true
+before_build:
+- cmd: nuget restore
+build:
+  verbosity: normal
+artifacts:
+- path: fuckshadows-csharp\bin\x86\Release\Fuckshadows.exe
+  name: Fuckshadows-release.exe
+- path: fuckshadows-csharp\bin\x86\Debug\Fuckshadows.exe
+  name: Fuckshadows-debug.exe
