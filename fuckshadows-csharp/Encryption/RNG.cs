@@ -31,6 +31,12 @@ namespace Fuckshadows.Encryption
             GetBytes(buf, buf.Length);
         }
 
+        public static void GetBytes(byte[] data, int offset, int count)
+        {
+            if (_rng == null) Reload();
+            _rng.GetBytes(data, offset, count);
+        }
+
         public static void GetBytes(byte[] buf, int len)
         {
             if (_rng == null) Reload();
