@@ -1,6 +1,4 @@
-﻿using Fuckshadows.Controller;
-
-namespace Fuckshadows.Encryption
+﻿namespace Fuckshadows.Encryption
 {
     public class EncryptorInfo
     {

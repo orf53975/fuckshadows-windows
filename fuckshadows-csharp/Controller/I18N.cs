@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using Fuckshadows.Properties;
 
 namespace Fuckshadows.Controller
 {

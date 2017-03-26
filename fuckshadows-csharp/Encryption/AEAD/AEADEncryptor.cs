@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 using Fuckshadows.Encryption.CircularBuffer;
 using Fuckshadows.Controller;
-using Fuckshadows.Encryption;
 using Fuckshadows.Encryption.Exception;
 using static Fuckshadows.Util.Utils;
 
@@ -30,6 +26,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         public const int CHUNK_LEN_BYTES = 2;
         public const uint CHUNK_LEN_MASK = 0x3FFFu;
+        public const int FS_GARBAGE_LEN = 1;
 
         protected Dictionary<string, EncryptorInfo> ciphers;
 
@@ -57,6 +54,9 @@ namespace Fuckshadows.Encryption.AEAD
 
         // Is first chunk(tcp request)
         protected bool _tcpRequestSent;
+
+        // zero-length garbage
+        protected static byte[] ZeroGarbageBytes = {0 /* length indicator */};
 
         public AEADEncryptor(string method, string password)
             : base(method, password)
@@ -176,20 +176,20 @@ namespace Fuckshadows.Encryption.AEAD
                 Logging.Debug($"_tcpRequestSent outlength {outlength}");
             }
 
-            uint bufSize;
             // handle other chunks
             while (true) {
-                bufSize = (uint)_encCircularBuffer.Size;
+                uint bufSize = (uint)_encCircularBuffer.Size;
                 if (bufSize <= 0) return;
                 var chunklength = (int)Math.Min(bufSize, CHUNK_LEN_MASK);
                 byte[] chunkBytes = _encCircularBuffer.Get(chunklength);
 
                 byte[] garbage = GetGarbage(chunklength);
-                Logging.Debug("garbage len: " + garbage.Length);
-                byte[] chunkWithGarbage = new byte[chunklength + garbage.Length];
-                PerfByteCopy(garbage, 0, chunkWithGarbage, 0, garbage.Length);
-                PerfByteCopy(chunkBytes, 0, chunkWithGarbage, garbage.Length, chunklength);
-                chunklength += garbage.Length;
+                int garbageLength = garbage.Length;
+                Logging.Debug("garbage len: " + garbageLength);
+                byte[] chunkWithGarbage = new byte[chunklength + garbageLength];
+                PerfByteCopy(garbage, 0, chunkWithGarbage, 0, garbageLength);
+                PerfByteCopy(chunkBytes, 0, chunkWithGarbage, garbageLength, chunklength);
+                chunklength += garbageLength;
 
                 int encChunkLength;
                 byte[] encChunkBytes = new byte[chunklength + tagLen * 2 + CHUNK_LEN_BYTES];
@@ -285,7 +285,7 @@ namespace Fuckshadows.Encryption.AEAD
 
                 #endregion
 
-                int garbageLen = decChunkBytes[0] + 1;
+                int garbageLen = decChunkBytes[0] + FS_GARBAGE_LEN;
 
                 // output to outbuf
                 PerfByteCopy(decChunkBytes, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
@@ -367,32 +367,29 @@ namespace Fuckshadows.Encryption.AEAD
             cipherLen = (int) (encChunkLenLength + encBufLength);
         }
 
-        private byte[] GetGarbage(int plen)
+        private static byte[] GetGarbage(int plaintextLength)
         {
-            byte[] ret = null;
-            if (plen > 1300)
+            if (plaintextLength > 1300)
             {
-                ret = new byte[1];
-                ret[0] = (byte) 0;
-                return ret;
+                return ZeroGarbageBytes;
             }
-            byte[] lenBytes = new byte[1];
+            byte[] lenBytes = new byte[FS_GARBAGE_LEN];
             RNG.GetBytes(lenBytes);
             int len = lenBytes[0];
-            if (plen > 1200)
+            if (plaintextLength > 1200)
             {
                 len &= 0x1F;
             }
-            else if (plen > 900)
+            else if (plaintextLength > 900)
             {
                 len &= 0x2F;
             }
-            else if (plen > 400)
+            else if (plaintextLength > 400)
             {
                 len &= 0x3F;
             }
-            ret = new byte[len + 1];
-            RNG.GetBytes(ret, 1, len);
+            byte[] ret = new byte[len + FS_GARBAGE_LEN];
+            RNG.GetBytes(ret, FS_GARBAGE_LEN, len);
             ret[0] = (byte) len;
             return ret;
         }

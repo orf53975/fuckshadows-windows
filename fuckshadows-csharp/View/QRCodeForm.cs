@@ -1,13 +1,8 @@
 ﻿using ZXing.QrCode.Internal;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Fuckshadows.Model;

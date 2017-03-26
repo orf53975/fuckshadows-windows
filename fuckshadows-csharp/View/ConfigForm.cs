@@ -1,14 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
-using System.Diagnostics;
 using Fuckshadows.Controller;
 using Fuckshadows.Model;
 using Fuckshadows.Properties;
-using Microsoft.Win32;
 
 namespace Fuckshadows.View
 {

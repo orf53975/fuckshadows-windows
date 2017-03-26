@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Microsoft.Win32;

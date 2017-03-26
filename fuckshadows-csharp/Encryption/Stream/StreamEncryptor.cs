@@ -1,12 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
-using System.Net;
 using Fuckshadows.Encryption.CircularBuffer;
 using Fuckshadows.Controller;
-using Fuckshadows.Encryption.Exception;
 using static Fuckshadows.Util.Utils;
 
 namespace Fuckshadows.Encryption.Stream

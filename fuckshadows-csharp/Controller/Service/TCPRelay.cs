@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -126,9 +125,8 @@ namespace Fuckshadows.Controller
         private readonly int _serverTimeout;
         private readonly int _proxyTimeout;
 
-        // Size of receive buffer.
-        // In general, the plaintext length
-        public const int RecvSize = 8192;
+        // each recv size.
+        public const int RecvSize = 2048;
 
         // overhead of one chunk, reserved for AEAD ciphers
         public const int ChunkOverheadSize = 16 * 2 /* two tags */ + AEADEncryptor.CHUNK_LEN_BYTES;
@@ -137,7 +135,7 @@ namespace Fuckshadows.Controller
         public const uint MaxChunkSize = AEADEncryptor.CHUNK_LEN_MASK + AEADEncryptor.CHUNK_LEN_BYTES + 16 * 2;
 
         // In general, the ciphertext length, we should take overhead into account
-        public const int BufferSize = RecvSize + (int)MaxChunkSize + 32 /* max salt len */ + 123 /* a random number */;
+        public const int BufferSize = RecvSize + (int) MaxChunkSize + 32 /* max salt len */;
 
         public DateTime lastActivity;
 
@@ -161,17 +159,20 @@ namespace Fuckshadows.Controller
         private const int CMD_CONNECT = 0x01;
         private const int CMD_UDP_ASSOC = 0x03;
 
-        private int _addrBufLength = - 1;
+        private int _addrBufLength = -1;
 
         private int _totalRead = 0;
         private int _totalWrite = 0;
 
         // remote -> local proxy (ciphertext, before decrypt)
         private byte[] _remoteRecvBuffer = new byte[BufferSize];
+
         // client -> local proxy (plaintext, before encrypt)
         private byte[] _connetionRecvBuffer = new byte[BufferSize];
+
         // local proxy -> remote (plaintext, after decrypt)
         private byte[] _remoteSendBuffer = new byte[BufferSize];
+
         // local proxy -> client (ciphertext, before decrypt)
         private byte[] _connetionSendBuffer = new byte[BufferSize];
 
@@ -181,6 +182,7 @@ namespace Fuckshadows.Controller
 
         // instance-based lock without static
         private readonly object _encryptionLock = new object();
+
         private readonly object _decryptionLock = new object();
         private readonly object _closeConnLock = new object();
 
@@ -213,7 +215,7 @@ namespace Fuckshadows.Controller
 
             this._server = server;
 
-            /* prepare address buffer for AEAD */
+            /* prepare address buffer length for AEAD */
             Logging.Debug($"_addrBufLength={_addrBufLength}");
             _encryptor.AddrBufLength = _addrBufLength;
         }
@@ -291,7 +293,7 @@ namespace Fuckshadows.Controller
                         Logging.Error("socks 5 protocol error");
                     }
                     _connection.BeginSend(response, 0, response.Length, SocketFlags.None,
-                        new AsyncCallback(HandshakeSendCallback), null);
+                        HandshakeSendCallback, null);
                 }
                 else
                     Close();
@@ -319,7 +321,7 @@ namespace Fuckshadows.Controller
                 // 2 more bytes is designed if address is domain then we don't need to read once more to get the addr length.
                 // TODO validate
                 _connection.BeginReceive(_connetionRecvBuffer, 0, 3 + ADDR_ATYP_LEN + 1, SocketFlags.None,
-                    new AsyncCallback(handshakeReceive2Callback), null);
+                    HandshakeReceive2Callback, null);
             }
             catch (Exception e)
             {
@@ -328,7 +330,7 @@ namespace Fuckshadows.Controller
             }
         }
 
-        private void handshakeReceive2Callback(IAsyncResult ar)
+        private void HandshakeReceive2Callback(IAsyncResult ar)
         {
             if (_closed) return;
             try
@@ -348,7 +350,7 @@ namespace Fuckshadows.Controller
                         {
                             byte[] response = {5, 0, 0, 1, 0, 0, 0, 0, 0, 0};
                             _connection.BeginSend(response, 0, response.Length, SocketFlags.None,
-                                new AsyncCallback(ResponseCallback), null);
+                                ResponseCallback, null);
                         }
                         else if (_command == CMD_UDP_ASSOC)
                         {
@@ -358,7 +360,8 @@ namespace Fuckshadows.Controller
                 }
                 else
                 {
-                    Logging.Debug("failed to recv data in Shadowsocks.Controller.TCPHandler.handshakeReceive2Callback()");
+                    Logging.Debug(
+                        "failed to recv data in Shadowsocks.Controller.TCPHandler.handshakeReceive2Callback()");
                     Close();
                 }
             }
@@ -391,14 +394,14 @@ namespace Fuckshadows.Controller
             switch (atyp)
             {
                 case ATYP_IPv4: // IPv4 address, 4 bytes
-                    ReadAddress(4 + 2 - 1, onSuccess);
+                    ReadAddress(4 + ADDR_PORT_LEN - 1, onSuccess);
                     break;
                 case ATYP_DOMAIN: // domain name, length + str
                     int len = _connetionRecvBuffer[4];
-                    ReadAddress(len + 2, onSuccess);
+                    ReadAddress(len + ADDR_PORT_LEN, onSuccess);
                     break;
                 case ATYP_IPv6: // IPv6 address, 16 bytes
-                    ReadAddress(16 + 2 - 1, onSuccess);
+                    ReadAddress(16 + ADDR_PORT_LEN - 1, onSuccess);
                     break;
                 default:
                     Logging.Debug("Unsupported ATYP=" + atyp);
@@ -410,7 +413,7 @@ namespace Fuckshadows.Controller
         private void ReadAddress(int bytesRemain, Action onSuccess)
         {
             // drop [ VER | CMD |  RSV  ]
-            Array.Copy(_connetionRecvBuffer, 3, _connetionRecvBuffer, 0, 2);
+            Array.Copy(_connetionRecvBuffer, 3, _connetionRecvBuffer, 0, ADDR_ATYP_LEN + 1);
 
             // Read the remain address bytes
             _connection.BeginReceive(_connetionRecvBuffer, 2, RecvSize - 2, SocketFlags.None, OnAddressFullyRead,
@@ -501,7 +504,7 @@ namespace Fuckshadows.Controller
             address.CopyTo(response, 4);
             response[response.Length - 1] = (byte) (port & 0xFF);
             response[response.Length - 2] = (byte) ((port >> 8) & 0xFF);
-            _connection.BeginSend(response, 0, response.Length, SocketFlags.None, new AsyncCallback(ReadAll), true);
+            _connection.BeginSend(response, 0, response.Length, SocketFlags.None, ReadAll, true);
         }
 
         private void ReadAll(IAsyncResult ar)
@@ -513,7 +516,7 @@ namespace Fuckshadows.Controller
                 {
                     _connection.EndSend(ar);
                     _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
-                        new AsyncCallback(ReadAll), null);
+                        ReadAll, null);
                 }
                 else
                 {
@@ -521,7 +524,7 @@ namespace Fuckshadows.Controller
                     if (bytesRead > 0)
                     {
                         _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
-                            new AsyncCallback(ReadAll), null);
+                            ReadAll, null);
                     }
                     else
                         Close();
@@ -566,7 +569,7 @@ namespace Fuckshadows.Controller
 
                 // Setting up proxy
                 IProxy remote;
-                EndPoint proxyEP;
+                EndPoint proxyEP = null;
                 if (_config.proxy.useProxy)
                 {
                     switch (_config.proxy.proxyType)
@@ -585,7 +588,6 @@ namespace Fuckshadows.Controller
                 else
                 {
                     remote = new DirectConnect();
-                    proxyEP = null;
                 }
 
                 var session = new AsyncSession(remote);
@@ -600,8 +602,8 @@ namespace Fuckshadows.Controller
                     _currentRemoteSession = session;
                 }
 
-                ProxyTimer proxyTimer = new ProxyTimer(_proxyTimeout) { AutoReset = false };
-                proxyTimer.Elapsed += proxyConnectTimer_Elapsed;
+                ProxyTimer proxyTimer = new ProxyTimer(_proxyTimeout) {AutoReset = false};
+                proxyTimer.Elapsed += ProxyConnectTimer_Elapsed;
                 proxyTimer.Enabled = true;
 
                 proxyTimer.Session = session;
@@ -611,7 +613,7 @@ namespace Fuckshadows.Controller
                 _proxyConnected = false;
 
                 // Connect to the proxy server.
-                remote.BeginConnectProxy(proxyEP, new AsyncCallback(ProxyConnectCallback),
+                remote.BeginConnectProxy(proxyEP, ProxyConnectCallback,
                     new AsyncSession<ProxyTimer>(remote, proxyTimer));
             }
             catch (Exception e)
@@ -621,10 +623,10 @@ namespace Fuckshadows.Controller
             }
         }
 
-        private void proxyConnectTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void ProxyConnectTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
             var timer = (ProxyTimer) sender;
-            timer.Elapsed -= proxyConnectTimer_Elapsed;
+            timer.Elapsed -= ProxyConnectTimer_Elapsed;
             timer.Enabled = false;
             timer.Dispose();
 
@@ -642,7 +644,6 @@ namespace Fuckshadows.Controller
 
         private void ProxyConnectCallback(IAsyncResult ar)
         {
-            Server server = null;
             if (_closed)
             {
                 return;
@@ -652,8 +653,8 @@ namespace Fuckshadows.Controller
                 var session = (AsyncSession<ProxyTimer>) ar.AsyncState;
                 ProxyTimer timer = session.State;
                 var destEndPoint = timer.DestEndPoint;
-                server = timer.Server;
-                timer.Elapsed -= proxyConnectTimer_Elapsed;
+                var server = timer.Server;
+                timer.Elapsed -= ProxyConnectTimer_Elapsed;
                 timer.Enabled = false;
                 timer.Dispose();
 
@@ -673,16 +674,15 @@ namespace Fuckshadows.Controller
                 }
 
                 _startConnectTime = DateTime.Now;
-                ServerTimer connectTimer = new ServerTimer(_serverTimeout);
-                connectTimer.AutoReset = false;
-                connectTimer.Elapsed += destConnectTimer_Elapsed;
+                ServerTimer connectTimer = new ServerTimer(_serverTimeout) {AutoReset = false};
+                connectTimer.Elapsed += DestConnectTimer_Elapsed;
                 connectTimer.Enabled = true;
                 connectTimer.Session = session;
                 connectTimer.Server = server;
 
                 _destConnected = false;
                 // Connect to the remote endpoint.
-                remote.BeginConnectDest(destEndPoint, new AsyncCallback(ConnectCallback),
+                remote.BeginConnectDest(destEndPoint, ConnectCallback,
                     new AsyncSession<ServerTimer>(session, connectTimer));
             }
             catch (ArgumentException)
@@ -695,10 +695,10 @@ namespace Fuckshadows.Controller
             }
         }
 
-        private void destConnectTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private void DestConnectTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
             var timer = (ServerTimer) sender;
-            timer.Elapsed -= destConnectTimer_Elapsed;
+            timer.Elapsed -= DestConnectTimer_Elapsed;
             timer.Enabled = false;
             timer.Dispose();
 
@@ -724,7 +724,7 @@ namespace Fuckshadows.Controller
                 var session = (AsyncSession<ServerTimer>) ar.AsyncState;
                 ServerTimer timer = session.State;
                 _server = timer.Server;
-                timer.Elapsed -= destConnectTimer_Elapsed;
+                timer.Elapsed -= DestConnectTimer_Elapsed;
                 timer.Enabled = false;
                 timer.Dispose();
 
@@ -819,7 +819,8 @@ namespace Fuckshadows.Controller
                             return;
                         }
                     }
-                    if (bytesToSend == 0) {
+                    if (bytesToSend == 0)
+                    {
                         // need more to decrypt
                         Logging.Debug("Need more to decrypt");
                         session.Remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
@@ -828,7 +829,7 @@ namespace Fuckshadows.Controller
                     }
                     Logging.Debug($"start sending {bytesToSend}");
                     _connection.BeginSend(_remoteSendBuffer, 0, bytesToSend, SocketFlags.None,
-                        PipeConnectionSendCallback, new object[] { session, bytesToSend });
+                        PipeConnectionSendCallback, new object[] {session, bytesToSend});
                     IStrategy strategy = _controller.GetCurrentStrategy();
                     strategy?.UpdateLastRead(_server);
                 }
@@ -878,18 +879,18 @@ namespace Fuckshadows.Controller
         {
             _totalWrite += length;
             int bytesToSend;
-            try
+            lock (_encryptionLock)
             {
-                lock (_encryptionLock)
+                try
                 {
                     _encryptor.Encrypt(_connetionRecvBuffer, length, _connetionSendBuffer, out bytesToSend);
                 }
-            }
-            catch (CryptoErrorException)
-            {
-                Logging.Debug("encryption error");
-                Close();
-                return;
+                catch (CryptoErrorException)
+                {
+                    Logging.Debug("encryption error");
+                    Close();
+                    return;
+                }
             }
             _tcprelay.UpdateOutboundCounter(_server, bytesToSend);
             _startSendingTime = DateTime.Now;
@@ -902,17 +903,19 @@ namespace Fuckshadows.Controller
         private void PipeRemoteSendCallback(IAsyncResult ar)
         {
             if (_closed) return;
-            try {
+            try
+            {
                 var container = (object[]) ar.AsyncState;
-                var session = (AsyncSession)container[0];
-                var bytesShouldSend = (int)container[1];
+                var session = (AsyncSession) container[0];
+                var bytesShouldSend = (int) container[1];
                 int bytesSent = session.Remote.EndSend(ar);
                 int bytesRemaining = bytesShouldSend - bytesSent;
-                if (bytesRemaining > 0) {
+                if (bytesRemaining > 0)
+                {
                     Logging.Info("reconstruct _connetionSendBuffer to re-send");
                     Util.Utils.PerfByteCopy(_connetionSendBuffer, bytesSent, _connetionSendBuffer, 0, bytesRemaining);
                     session.Remote.BeginSend(_connetionSendBuffer, 0, bytesRemaining, SocketFlags.None,
-                        PipeRemoteSendCallback, new object[] { session, bytesRemaining });
+                        PipeRemoteSendCallback, new object[] {session, bytesRemaining});
                     return;
                 }
                 _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
@@ -928,17 +931,19 @@ namespace Fuckshadows.Controller
         // In general, we assume there is no delay between local proxy and client, add this for sanity
         private void PipeConnectionSendCallback(IAsyncResult ar)
         {
-            try {
+            try
+            {
                 var container = (object[]) ar.AsyncState;
                 var session = (AsyncSession) container[0];
                 var bytesShouldSend = (int) container[1];
                 var bytesSent = _connection.EndSend(ar);
                 var bytesRemaining = bytesShouldSend - bytesSent;
-                if (bytesRemaining > 0) {
+                if (bytesRemaining > 0)
+                {
                     Logging.Info("reconstruct _remoteSendBuffer to re-send");
                     Util.Utils.PerfByteCopy(_remoteSendBuffer, bytesSent, _remoteSendBuffer, 0, bytesRemaining);
                     _connection.BeginSend(_remoteSendBuffer, 0, bytesRemaining, SocketFlags.None,
-                        PipeConnectionSendCallback, new object[] { session, bytesRemaining });
+                        PipeConnectionSendCallback, new object[] {session, bytesRemaining});
                     return;
                 }
                 session.Remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
