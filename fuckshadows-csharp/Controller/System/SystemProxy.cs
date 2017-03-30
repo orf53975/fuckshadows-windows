@@ -27,7 +27,7 @@ namespace Fuckshadows.Controller
                 {
                     if (global)
                     {
-                        Sysproxy.SetIEProxy(true, true, "127.0.0.1:" + config.localPort.ToString(), "");
+                        Sysproxy.SetIEProxy(true, true, "127.0.0.1:" + config.localPort.ToString(), null);
                     }
                     else
                     {
@@ -40,12 +40,12 @@ namespace Fuckshadows.Controller
                         {
                             pacUrl = pacSrv.PacUrl;
                         }
-                        Sysproxy.SetIEProxy(true, false, "", pacUrl);
+                        Sysproxy.SetIEProxy(true, false, null, pacUrl);
                     }
                 }
                 else
                 {
-                    Sysproxy.SetIEProxy(false, false, "", "");
+                    Sysproxy.SetIEProxy(false, false, null, null);
                 }
             }
             catch (ProxyException ex)

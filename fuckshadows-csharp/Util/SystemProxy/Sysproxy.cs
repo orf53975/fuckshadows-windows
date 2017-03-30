@@ -3,11 +3,21 @@ using System.Diagnostics;
 using System.IO;
 using Fuckshadows.Controller;
 using Fuckshadows.Properties;
+using System.Text;
 
 namespace Fuckshadows.Util.SystemProxy
 {
     public static class Sysproxy
     {
+        private static bool _userSettingsRecorded = false;
+
+        // In general, this won't change
+        // format:
+        //  <flags><CR-LF>
+        //  <proxy-server><CR-LF>
+        //  <bypass-list><CR-LF>
+        //  <pac-url>
+        private static string[] _userSettings = new string[4];
 
         enum RET_ERRORS : int
         {
@@ -34,6 +44,14 @@ namespace Fuckshadows.Util.SystemProxy
 
         public static void SetIEProxy(bool enable, bool global, string proxyServer, string pacURL)
         {
+            string str;
+            if (_userSettingsRecorded == false)
+            {
+                // record user settings
+                ExecSysproxy("query", out str);
+                ParseQueryStr(str);
+                _userSettingsRecorded = true;
+            }
             string arguments;
 
             if (enable)
@@ -49,9 +67,22 @@ namespace Fuckshadows.Util.SystemProxy
             }
             else
             {
-                arguments = "off";
+                // restore user settings
+                var flags = _userSettings[0];
+                var proxy_server = _userSettings[1] ?? "-";
+                var bypass_list = _userSettings[2] ?? "-";
+                var pac_url = _userSettings[3] ?? "-";
+                arguments = $"set {flags} {proxy_server} {bypass_list} {pac_url}";
+
+                // have to get new settings
+                _userSettingsRecorded = false;
             }
 
+            ExecSysproxy(arguments, out str);
+        }
+
+        private static void ExecSysproxy(string arguments, out string queryStr)
+        {
             using (var process = new Process())
             {
                 // Configure the process using the StartInfo properties.
@@ -61,18 +92,43 @@ namespace Fuckshadows.Util.SystemProxy
                 process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.RedirectStandardError = true;
+                process.StartInfo.RedirectStandardOutput = true;
+
+                // Need to provide encoding info, or output/error strings we got will be wrong.
+                process.StartInfo.StandardOutputEncoding = Encoding.Unicode;
+                process.StartInfo.StandardErrorEncoding = Encoding.Unicode;
+
                 process.StartInfo.CreateNoWindow = true;
                 process.Start();
 
-                var error = process.StandardError.ReadToEnd();
+                var stderr = process.StandardError.ReadToEnd();
+                var stdout = process.StandardOutput.ReadToEnd();
 
                 process.WaitForExit();
 
                 var exitCode = process.ExitCode;
-                if (exitCode != (int) RET_ERRORS.RET_NO_ERROR)
+                if (exitCode != (int)RET_ERRORS.RET_NO_ERROR)
                 {
-                    throw new ProxyException(error);
+                    throw new ProxyException(stderr);
                 }
+
+                if (arguments == "query" && stdout.IsNullOrWhiteSpace())
+                {
+                    // we cannot get user settings
+                    throw new ProxyException("failed to query wininet settings");
+                }
+                queryStr = stdout;
+            }
+        }
+
+        private static void ParseQueryStr(string str)
+        {
+            _userSettings = str.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < 4; i++)
+            {
+                // handle output from WinINET
+                if (_userSettings[i] == "(null)")
+                    _userSettings[i] = null;
             }
         }
     }
