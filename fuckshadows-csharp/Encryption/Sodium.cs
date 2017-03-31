@@ -18,6 +18,8 @@ namespace Fuckshadows.Encryption
         private static bool _initialized = false;
         private static readonly object _initLock = new object();
 
+        public static bool AES256GCMAvailable { get; private set; } = false;
+
         static Sodium()
         {
             string dllPath = Utils.GetTempPath(DLLNAME);
@@ -42,8 +44,7 @@ namespace Fuckshadows.Encryption
             {
                 if (!_initialized)
                 {
-                    int ret = sodium_init();
-                    if (ret == -1)
+                    if (sodium_init() == -1)
                     {
                         throw new System.Exception("Failed to initialize sodium");
                     }
@@ -51,6 +52,9 @@ namespace Fuckshadows.Encryption
                     {
                         _initialized = true;
                     }
+
+                    AES256GCMAvailable = crypto_aead_aes256gcm_is_available() == 1;
+                    Logging.Debug($"sodium: AES256GCMAvailable is {AES256GCMAvailable}");
                 }
             }
         }
@@ -59,7 +63,10 @@ namespace Fuckshadows.Encryption
         private static extern IntPtr LoadLibrary(string path);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int sodium_init();
+        private static extern int sodium_init();
+
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int crypto_aead_aes256gcm_is_available();
 
         #region AEAD
 
@@ -96,6 +103,14 @@ namespace Fuckshadows.Encryption
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int crypto_aead_xchacha20poly1305_ietf_decrypt(byte[] m, ref ulong mlen_p, byte[] nsec, byte[] c,
+            ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
+
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int crypto_aead_aes256gcm_encrypt(byte[] c, ref ulong clen_p, byte[] m, ulong mlen,
+            byte[] ad, ulong adlen, byte[] nsec, byte[] npub, byte[] k);
+
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int crypto_aead_aes256gcm_decrypt(byte[] m, ref ulong mlen_p, byte[] nsec, byte[] c,
             ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
 
         #endregion
