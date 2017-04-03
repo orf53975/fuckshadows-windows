@@ -17,7 +17,7 @@ namespace Fuckshadows.Encryption.AEAD
         public AEADMbedTLSEncryptor(string method, string password)
             : base(method, password) { }
 
-        private static Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo>
+        private static readonly Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo>
         {
             { "aes-128-gcm", new EncryptorInfo("AES-128-GCM", 16, 16, 12, 16, CIPHER_AES) },
             { "aes-192-gcm", new EncryptorInfo("AES-192-GCM", 24, 24, 12, 16, CIPHER_AES) },
@@ -61,7 +61,7 @@ namespace Fuckshadows.Encryption.AEAD
             if (ret != 0) throw new System.Exception("failed to finish preparation");
         }
 
-        public override int cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen)
+        public override void cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen)
         {
             // buf: all plaintext
             // outbuf: ciphertext + tag
@@ -80,18 +80,18 @@ namespace Fuckshadows.Encryption.AEAD
                                                       /* cipher */
                                                       ciphertext, ref olen,
                                                       tagbuf, (uint)tagLen);
-                    if (ret != 0) throw new CryptoErrorException();
+                    if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
                     Debug.Assert(olen == plen);
                     // attach tag to ciphertext
                     Array.Copy(tagbuf, 0, ciphertext, (int) plen, tagLen);
                     clen = olen + (uint)tagLen;
-                    return ret;
+                    break;
                 default:
                     throw new System.Exception("not implemented");
             }
         }
 
-        public override int cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen)
+        public override void cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen)
         {
             // buf: ciphertext + tag
             // outbuf: plaintext
@@ -108,10 +108,10 @@ namespace Fuckshadows.Encryption.AEAD
                                                       ciphertext, (uint) (clen - tagLen),
                                                       plaintext, ref olen,
                                                       tagbuf, (uint) tagLen);
-                    if (ret != 0) throw new CryptoErrorException();
+                    if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
                     Debug.Assert(olen == clen - tagLen);
                     plen = olen;
-                    return ret;
+                    break;
                 default:
                     throw new System.Exception("not implemented");
             }

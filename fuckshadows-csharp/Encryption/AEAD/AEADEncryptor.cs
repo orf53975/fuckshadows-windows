@@ -26,6 +26,8 @@ namespace Fuckshadows.Encryption.AEAD
 
         public const int CHUNK_LEN_BYTES = 2;
         public const uint CHUNK_LEN_MASK = 0x3FFFu;
+        public const uint CHUNK_MAX_LEN_WITH_GARBAGE = CHUNK_LEN_MASK - FS_MAX_GARBAGE;
+        public const int FS_MAX_GARBAGE = 255 + FS_GARBAGE_LEN;
         public const int FS_GARBAGE_LEN = 1;
 
         protected Dictionary<string, EncryptorInfo> ciphers;
@@ -56,7 +58,7 @@ namespace Fuckshadows.Encryption.AEAD
         protected bool _tcpRequestSent;
 
         // zero-length garbage
-        protected static byte[] ZeroGarbageBytes = {0 /* length indicator */};
+        protected static readonly byte[] ZeroGarbageBytes = {0 /* length indicator */};
 
         public AEADEncryptor(string method, string password)
             : base(method, password)
@@ -132,9 +134,9 @@ namespace Fuckshadows.Encryption.AEAD
 
         public static void randBytes(byte[] buf, int length) { RNG.GetBytes(buf, length); }
 
-        public abstract int cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen);
+        public abstract void cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen);
 
-        public abstract int cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen);
+        public abstract void cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen);
 
         #region TCP
 
@@ -180,7 +182,7 @@ namespace Fuckshadows.Encryption.AEAD
             while (true) {
                 uint bufSize = (uint)_encCircularBuffer.Size;
                 if (bufSize <= 0) return;
-                var chunklength = (int)Math.Min(bufSize, CHUNK_LEN_MASK);
+                var chunklength = (int)Math.Min(bufSize, CHUNK_MAX_LEN_WITH_GARBAGE);
                 byte[] chunkBytes = _encCircularBuffer.Get(chunklength);
 
                 byte[] garbage = GetGarbage(chunklength);
@@ -341,6 +343,7 @@ namespace Fuckshadows.Encryption.AEAD
         // we know the plaintext length before encryption, so we can do it in one operation
         private void ChunkEncrypt(byte[] plaintext, int plainLen, byte[] ciphertext, out int cipherLen)
         {
+            // already take CHUNK_MAX_LEN_WITH_GARBAGE into account outside
             if (plainLen > CHUNK_LEN_MASK) {
                 Logging.Error("enc chunk too big");
                 throw new CryptoErrorException();
