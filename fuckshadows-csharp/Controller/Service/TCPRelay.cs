@@ -812,9 +812,9 @@ namespace Fuckshadows.Controller
                         {
                             _encryptor.Decrypt(_remoteRecvBuffer, bytesRead, _remoteSendBuffer, out bytesToSend);
                         }
-                        catch (CryptoErrorException)
+                        catch (CryptoErrorException e)
                         {
-                            Logging.Error("decryption error");
+                            Logging.LogUsefulException(e);
                             Close();
                             return;
                         }

@@ -101,9 +101,10 @@ namespace Fuckshadows.Encryption.Stream
             {
                 throw new ObjectDisposedException(this.ToString());
             }
-            if (MbedTLS.cipher_update(isEncrypt ? _encryptCtx : _decryptCtx,
-                buf, length, outbuf, ref length) != 0 )
-                throw new CryptoErrorException();
+            var ret = MbedTLS.cipher_update(isEncrypt ? _encryptCtx : _decryptCtx,
+                buf, length, outbuf, ref length);
+            if (ret != 0)
+                throw new CryptoErrorException($"ret is {ret}");
         }
 
         #region IDisposable

@@ -264,8 +264,7 @@ namespace Fuckshadows.Encryption.AEAD
                 if (chunkLen > CHUNK_LEN_MASK)
                 {
                     // we get invalid chunk
-                    Logging.Error($"Invalid chunk length: {chunkLen}");
-                    throw new CryptoErrorException();
+                    throw new CryptoErrorException($"Invalid chunk length: {chunkLen}");
                 }
                 Logging.Debug("Get the real chunk len:" + chunkLen);
                 bufSize = _decCircularBuffer.Size;
@@ -345,8 +344,7 @@ namespace Fuckshadows.Encryption.AEAD
         {
             // already take CHUNK_MAX_LEN_WITH_GARBAGE into account outside
             if (plainLen > CHUNK_LEN_MASK) {
-                Logging.Error("enc chunk too big");
-                throw new CryptoErrorException();
+                throw new CryptoErrorException("enc chunk too big");
             }
 
             // encrypt len
