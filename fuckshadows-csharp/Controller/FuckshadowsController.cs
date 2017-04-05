@@ -159,7 +159,7 @@ namespace Fuckshadows.Controller
             {
                 if (ssURL.IsNullOrEmpty() || ssURL.IsWhiteSpace()) return false;
                 var servers = Server.GetServers(ssURL);
-                if (servers == null) return false;
+                if (servers == null || servers.Count == 0) return false;
                 foreach (var server in servers) {
                     _config.configs.Add(server);
                 }
