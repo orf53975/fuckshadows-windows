@@ -12,7 +12,7 @@ namespace Fuckshadows.Encryption.Stream
         : EncryptorBase
     {
         // for UDP only
-        protected static byte[] _udpTmpBuf = new byte[MAX_INPUT_SIZE];
+        protected static byte[] _udpTmpBuf = new byte[65536];
 
         // every connection should create its own buffer
 

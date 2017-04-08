@@ -18,7 +18,7 @@ namespace Fuckshadows.Encryption.AEAD
         private static readonly byte[] PersonalBytes = Encoding.ASCII.GetBytes(Personal);
 
         // for UDP only
-        protected static byte[] _udpTmpBuf = new byte[MAX_INPUT_SIZE];
+        protected static byte[] _udpTmpBuf = new byte[65536];
 
         // every connection should create its own buffer
         private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(MAX_INPUT_SIZE * 2);
@@ -330,7 +330,7 @@ namespace Fuckshadows.Encryption.AEAD
             uint olen = 0;
             lock (_udpTmpBuf) {
                 // copy remaining data to first pos
-                Buffer.BlockCopy(buf, saltLen, buf, 0, length - saltLen);
+                PerfByteCopy(buf, saltLen, buf, 0, length - saltLen);
                 cipherDecrypt(buf, (uint) (length - saltLen), _udpTmpBuf, ref olen);
                 PerfByteCopy(_udpTmpBuf, 0, outbuf, 0, (int) olen);
                 outlength = (int) olen;
