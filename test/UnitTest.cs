@@ -379,7 +379,7 @@ namespace test
             string pass = "test-legacy";
             byte[] passBytes = Encoding.UTF8.GetBytes(pass);
             byte[] key1 = new byte[32];
-            StreamEncryptor.LegacyDeriveKey(passBytes, key1);
+            StreamEncryptor.LegacyDeriveKey(passBytes, key1, 32);
             byte[] key2 =
             {
                 0x7b, 0x14, 0xff, 0x93, 0xd6, 0x63, 0x27, 0xfa, 0xd4, 0xdc, 0x37, 0x86, 0x46, 0x86, 0x3f,
@@ -397,7 +397,7 @@ namespace test
             byte[] passBytes = Encoding.UTF8.GetBytes(pass);
             byte[] key_test = new byte[32];
             AEADSodiumEncryptor encryptor = new AEADSodiumEncryptor("chacha20-ietf-poly1305", pass);
-            encryptor.DeriveKey(passBytes, key_test);
+            encryptor.DeriveKey(passBytes, key_test, 32);
             byte[] key_ref =
             {
                 0xb5, 0x02, 0xe1, 0x43, 0x31, 0x6e, 0xea, 0xad, 0x3d, 0x9d, 0xd2, 0x9f, 0x1c, 0xdc, 0x1a,

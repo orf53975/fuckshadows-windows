@@ -94,15 +94,15 @@ namespace Fuckshadows.Encryption.AEAD
             byte[] passbuf = Encoding.UTF8.GetBytes(password);
             // init master key
             if (_Masterkey == null) _Masterkey = new byte[keyLen];
-            if (_Masterkey.Length < keyLen) Array.Resize(ref _Masterkey, keyLen);
-            DeriveKey(passbuf, _Masterkey);
+            if (_Masterkey.Length != keyLen) Array.Resize(ref _Masterkey, keyLen);
+            DeriveKey(passbuf, _Masterkey, keyLen);
             // init session key
             if (_sessionKey == null) _sessionKey = new byte[keyLen];
         }
 
-        public void DeriveKey(byte[] password, byte[] key)
+        public void DeriveKey(byte[] password, byte[] key, int keylen)
         {
-            int ret = Sodium.crypto_generichash(key, keyLen, password, (ulong) password.Length, null, 0);
+            int ret = Sodium.crypto_generichash(key, keylen, password, (ulong) password.Length, null, 0);
             if (ret != 0) throw new System.Exception("failed to generate hash");
         }
 
