@@ -144,7 +144,8 @@ namespace Fuckshadows.Encryption.Stream
             }
             byte[] cipher = _decCircularBuffer.ToArray();
             cipherUpdate(false, cipher.Length, cipher, outbuf);
-            _decCircularBuffer.Clear();
+            // move pointer only
+            _decCircularBuffer.Skip(_decCircularBuffer.Size);
             outlength = cipher.Length;
             // done the decryption
         }
