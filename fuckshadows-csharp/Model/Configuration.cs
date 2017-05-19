@@ -30,7 +30,7 @@ namespace Fuckshadows.Model
         public ProxyConfig proxy;
         public HotkeyConfig hotkey;
 
-        private static string CONFIG_FILE = "gui-config.json";
+        private const string CONFIG_FILE = "gui-config.json";
 
         public Server GetCurrentServer()
         {
@@ -120,12 +120,6 @@ namespace Fuckshadows.Model
         public static Server GetDefaultServer()
         {
             return new Server();
-        }
-
-        private static void Assert(bool condition)
-        {
-            if (!condition)
-                throw new Exception(I18N.GetString("assertion failure"));
         }
 
         public static void CheckPort(int port)
