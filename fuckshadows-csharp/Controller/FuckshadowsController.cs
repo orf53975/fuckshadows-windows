@@ -42,8 +42,6 @@ namespace Fuckshadows.Controller
 
         private bool stopped = false;
 
-        private bool _systemProxyIsDirty = false;
-
         public class PathEventArgs : EventArgs
         {
             public string Path;
@@ -448,20 +446,7 @@ namespace Fuckshadows.Controller
 
         private void UpdateSystemProxy()
         {
-            if (_config.enabled)
-            {
-                SystemProxy.Update(_config, false, _pacServer);
-                _systemProxyIsDirty = true;
-            }
-            else
-            {
-                // only switch it off if we have switched it on
-                if (_systemProxyIsDirty)
-                {
-                    SystemProxy.Update(_config, false, _pacServer);
-                    _systemProxyIsDirty = false;
-                }
-            }
+            SystemProxy.Update(_config, false, _pacServer);
         }
 
         private void pacServer_PACFileChanged(object sender, EventArgs e)
