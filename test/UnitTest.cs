@@ -18,16 +18,9 @@ namespace test
     {
         #region Test helper
 
-        [SetUp]
-        public void Setup()
-        {
-            RNG.Reload();
-        }
-
         [TearDown]
         public void TearDown()
         {
-            RNG.Close();
             // reset flag in case they interfere each other
             encryptionFailed = false;
         }
@@ -36,12 +29,6 @@ namespace test
         public void OneTimeSetup()
         {
             _random = new Random();
-        }
-
-        [OneTimeTearDown]
-        public void OneTimeTearDown()
-        {
-            RNG.Close();
         }
 
         private Random _random = null;

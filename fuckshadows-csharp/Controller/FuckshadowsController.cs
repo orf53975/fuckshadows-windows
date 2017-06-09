@@ -243,7 +243,6 @@ namespace Fuckshadows.Controller
             {
                 SystemProxy.Update(_config, true, null);
             }
-            Encryption.RNG.Close();
         }
 
         public void TouchPACFile()
@@ -367,7 +366,6 @@ namespace Fuckshadows.Controller
 
         protected void Reload()
         {
-            Encryption.RNG.Reload();
             // some logic in configuration updated the config when saving, we need to read it again
             _config = Configuration.Load();
             StatisticsConfiguration = StatisticsStrategyConfiguration.Load();

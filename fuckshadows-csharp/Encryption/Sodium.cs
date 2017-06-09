@@ -68,6 +68,9 @@ namespace Fuckshadows.Encryption
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         private static extern int crypto_aead_aes256gcm_is_available();
 
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void randombytes_buf(byte[] buf, int size);
+
         #region AEAD
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
