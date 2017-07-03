@@ -277,8 +277,6 @@ namespace Fuckshadows.Controller
                 int bytesRead = _connection.EndReceive(ar);
                 if (bytesRead >= 5)
                 {
-                    ParseAddrBuf(_connetionRecvBuffer, bytesRead);
-
                     var _command = _connetionRecvBuffer[1];
                     if (_command != CMD_CONNECT && _command != CMD_UDP_ASSOC)
                     {
@@ -287,6 +285,8 @@ namespace Fuckshadows.Controller
                     }
                     else
                     {
+                        ParseAddrBuf(_connetionRecvBuffer, bytesRead);
+
                         if (_command == CMD_CONNECT)
                         {
                             _connection.BeginSend(Sock5ConnectRequestReplySuccess, 0,
@@ -438,6 +438,7 @@ namespace Fuckshadows.Controller
             {
                 CreateRemote();
 
+                // let SAEA's RemoteEndPoint determine the AddressFamily
                 _remote = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
                 _remote.SetTFO();
