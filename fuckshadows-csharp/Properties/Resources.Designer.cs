@@ -73,7 +73,7 @@ namespace Fuckshadows.Properties {
         /// <summary>
         ///   查找类似 # translation for Simplified Chinese
         ///
-        ///Shadowsocks=Shadowsocks
+        ///Fuckshadows=Fuckshadows
         ///
         ///# Menu items
         ///
@@ -85,7 +85,6 @@ namespace Fuckshadows.Properties {
         ///Edit Servers...=编辑服务器...
         ///Statistics Config...=统计配置...
         ///Start on Boot=开机启动
-        ///Forward Proxy...=正向代理设置...
         ///Allow Clients from LAN=允许来自局域网的连接
         ///Local PAC=使用本地 PAC
         ///Online PAC=使用在线 PAC
@@ -93,7 +92,7 @@ namespace Fuckshadows.Properties {
         ///Update Local PAC from GFWList=从 GFWList 更新本地 PAC
         ///Edit User Rule for GFWList...=编辑 GFWList 的用户规则...
         ///Secure Local PAC=保护本地 PAC
-        ///Cop [字符串的其余部分被截断]&quot;; 的本地化字符串。
+        ///Copy Local PAC URL=复制本地 PAC 网址        /// [字符串的其余部分被截断]&quot;; 的本地化字符串。
         /// </summary>
         internal static string cn {
             get {
@@ -261,7 +260,7 @@ namespace Fuckshadows.Properties {
         /// <summary>
         ///   查找类似 # translation for Traditional Chinese
         ///
-        ///Shadowsocks=Shadowsocks
+        ///Fuckshadows=Fuckshadows
         ///
         ///# Menu items
         ///
@@ -273,7 +272,6 @@ namespace Fuckshadows.Properties {
         ///Edit Servers...=編輯伺服器...
         ///Statistics Config...=統計設定檔...
         ///Start on Boot=開機啟動
-        ///Forward Proxy...=正向 Proxy 設定...
         ///Allow Clients from LAN=允許來自區域網路的連線
         ///Local PAC=使用本機 PAC
         ///Online PAC=使用線上 PAC
@@ -281,7 +279,8 @@ namespace Fuckshadows.Properties {
         ///Update Local PAC from GFWList=從 GFWList 更新本機 PAC
         ///Edit User Rule for GFWList...=編輯 GFWList 的使用者規則...
         ///Secure Local PAC=安全本機 PAC
-        ///Copy Local PAC U [字符串的其余部分被截断]&quot;; 的本地化字符串。
+        ///Copy Local PAC URL=複製本機 PAC 網址
+        ///Share Server Conf [字符串的其余部分被截断]&quot;; 的本地化字符串。
         /// </summary>
         internal static string zh_tw {
             get {
