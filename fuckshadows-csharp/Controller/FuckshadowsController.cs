@@ -40,6 +40,9 @@ namespace Fuckshadows.Controller
         public long OutboundCounter => Interlocked.Read(ref _outboundCounter);
         public Queue<TrafficPerSecond> trafficPerSecondQueue;
 
+        public long _tcpConnCounter = 0;
+        public long TCPConnectionCounter => Interlocked.Read(ref _tcpConnCounter);
+
         private bool stopped = false;
 
         public class PathEventArgs : EventArgs
@@ -346,6 +349,16 @@ namespace Fuckshadows.Controller
             {
                 availabilityStatistics.UpdateOutboundCounter(server, n);
             }
+        }
+
+        public void IncrementTCPConnectionCounter()
+        {
+            Interlocked.Increment(ref _tcpConnCounter);
+        }
+
+        public void DecrementTCPConnectionCounter()
+        {
+            Interlocked.Decrement(ref _tcpConnCounter);
         }
 
         protected void Reload()

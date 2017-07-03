@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Policy;
 using System.ServiceModel.Channels;
+using System.Threading;
 using System.Timers;
 using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
@@ -12,6 +14,7 @@ using Fuckshadows.Encryption.Exception;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 using static Fuckshadows.Encryption.EncryptorBase;
+using Timer = System.Timers.Timer;
 
 namespace Fuckshadows.Controller
 {
@@ -23,7 +26,7 @@ namespace Fuckshadows.Controller
 
         public ISet<TCPHandler> Handlers { get; set; }
         public BufferManager _bm;
-        private const int MAX_HANDLER_NUM = 1024;
+        public const int MAX_HANDLER_NUM = 1024;
 
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {
@@ -56,10 +59,12 @@ namespace Fuckshadows.Controller
                             handlersToClose.Add(handler1);
                 }
             }
+
             foreach (TCPHandler handler1 in handlersToClose)
             {
                 Logging.Debug("Closing timed out TCP connection.");
                 handler1.Close();
+                DecrementTCPConnectionCounter();
             }
 
             /*
@@ -69,6 +74,7 @@ namespace Fuckshadows.Controller
              * cause odd problems (especially during memory profiling).
              */
             handler.Start(firstPacket, length);
+            IncrementTCPConnectionCounter();
 
             return true;
         }
@@ -80,7 +86,12 @@ namespace Fuckshadows.Controller
             {
                 handlersToClose.AddRange(Handlers);
             }
-            handlersToClose.ForEach(h => h.Close());
+            handlersToClose.ForEach(h =>
+            {
+                h.Close();
+                DecrementTCPConnectionCounter();
+            });
+
             _bm.Clear();
         }
 
@@ -92,6 +103,16 @@ namespace Fuckshadows.Controller
         public void UpdateOutboundCounter(Server server, long n)
         {
             _controller.UpdateOutboundCounter(server, n);
+        }
+
+        public void IncrementTCPConnectionCounter()
+        {
+            _controller.IncrementTCPConnectionCounter();
+        }
+
+        public void DecrementTCPConnectionCounter()
+        {
+            _controller.DecrementTCPConnectionCounter();
         }
 
         public void UpdateLatency(Server server, TimeSpan latency)
@@ -820,6 +841,8 @@ namespace Fuckshadows.Controller
             _bm.ReturnBuffer(_connetionRecvBuffer);
             _bm.ReturnBuffer(_remoteRecvBuffer);
             _bm.ReturnBuffer(_remoteSendBuffer);
+
+            _tcprelay.DecrementTCPConnectionCounter();
         }
     }
 }
