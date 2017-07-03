@@ -578,11 +578,6 @@ namespace Fuckshadows.Controller
                     timer.Elapsed -= DestConnectTimer_Elapsed;
                     timer.Dispose();
 
-                    if (_config.isVerboseLogging)
-                    {
-                        Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
-                    }
-
                     _destConnected = true;
 
                     if (_config.isVerboseLogging)
