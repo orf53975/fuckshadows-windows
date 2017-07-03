@@ -11,7 +11,7 @@ namespace Fuckshadows.Controller
         private readonly int _targetPort;
 
         private readonly BufferManager _bm;
-        private const int MAX_HANDLER_NUM = 128;
+        private const int MAX_HANDLER_NUM = TCPRelay.MAX_HANDLER_NUM;
         private const int RecvSize = 2048;
 
         public PortForwarder(int targetPort)
@@ -71,10 +71,13 @@ namespace Fuckshadows.Controller
                     remoteRecvBuffer = _bm.TakeBuffer(RecvSize);
                     connetionRecvBuffer = _bm.TakeBuffer(RecvSize);
 
+                    _local.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
+
                     EndPoint remoteEP = SocketUtil.GetEndPoint("127.0.0.1", targetPort);
 
                     // Connect to the remote endpoint.
                     _remote = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
                     _remote.BeginConnect(remoteEP, ConnectCallback, null);
                 }
                 catch (Exception e)
@@ -93,7 +96,6 @@ namespace Fuckshadows.Controller
                 try
                 {
                     _remote.EndConnect(ar);
-                    _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
                     HandshakeReceive();
                 }
                 catch (Exception e)

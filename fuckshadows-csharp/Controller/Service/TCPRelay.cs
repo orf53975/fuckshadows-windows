@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Policy;
 using System.ServiceModel.Channels;
-using System.Threading;
 using System.Timers;
 using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
@@ -26,7 +24,7 @@ namespace Fuckshadows.Controller
 
         public ISet<TCPHandler> Handlers { get; set; }
         public BufferManager _bm;
-        public const int MAX_HANDLER_NUM = 1024;
+        public const int MAX_HANDLER_NUM = 8192;
 
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {
@@ -64,7 +62,6 @@ namespace Fuckshadows.Controller
             {
                 Logging.Debug("Closing timed out TCP connection.");
                 handler1.Close();
-                DecrementTCPConnectionCounter();
             }
 
             /*
@@ -86,11 +83,7 @@ namespace Fuckshadows.Controller
             {
                 handlersToClose.AddRange(Handlers);
             }
-            handlersToClose.ForEach(h =>
-            {
-                h.Close();
-                DecrementTCPConnectionCounter();
-            });
+            handlersToClose.ForEach(h => h.Close());
 
             _bm.Clear();
         }
