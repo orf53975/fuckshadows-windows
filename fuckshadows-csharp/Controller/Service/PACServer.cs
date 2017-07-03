@@ -165,7 +165,16 @@ namespace Fuckshadows.Controller
             }
         }
 
-        public void SendResponse(byte[] firstPacket, int length, Socket socket, bool useSocks)
+        private const string HTTP_CRLF = "\r\n";
+        private const string HTTP_OK_TEMPLATE =
+            "HTTP/1.1 200 OK" + HTTP_CRLF +
+            "Server: Fuckshadows" + HTTP_CRLF +
+            "Content-Type: application/x-ns-proxy-autoconfig" + HTTP_CRLF +
+            "Content-Length: {0}" + HTTP_CRLF +
+            "Connection: Close" + HTTP_CRLF +
+            HTTP_CRLF; // End with an empty line
+
+        private void SendResponse(byte[] firstPacket, int length, Socket socket, bool useSocks)
         {
             try
             {
@@ -177,13 +186,7 @@ namespace Fuckshadows.Controller
 
                 pac = pac.Replace("__PROXY__", proxy);
 
-                string text = String.Format(@"HTTP/1.1 200 OK
-Server: Shadowsocks
-Content-Type: application/x-ns-proxy-autoconfig
-Content-Length: {0}
-Connection: Close
-
-", Encoding.UTF8.GetBytes(pac).Length) + pac;
+                string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
                 byte[] response = Encoding.UTF8.GetBytes(text);
                 socket.BeginSend(response, 0, response.Length, 0, new AsyncCallback(SendCallback), socket);
             }
