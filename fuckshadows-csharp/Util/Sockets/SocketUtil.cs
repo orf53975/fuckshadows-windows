@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using Fuckshadows.Controller;
 
 namespace Fuckshadows.Util.Sockets
 {
@@ -67,6 +68,19 @@ namespace Fuckshadows.Util.Sockets
             {
             }
         }
-        
+
+        public static void SetTFO(this Socket s)
+        {
+            if (!Program.TFOSupported) return;
+            try
+            {
+                s.SetSocketOption(SocketOptionLevel.Tcp, (SocketOptionName)15, true);
+            }
+            catch (Exception e)
+            {
+                Logging.LogUsefulException(e);
+            }
+        }
+
     }
 }

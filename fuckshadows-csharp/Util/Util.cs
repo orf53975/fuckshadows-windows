@@ -153,32 +153,29 @@ namespace Fuckshadows.Util
             }
         }
 
-        public static bool IsWinVistaOrHigher() { return Environment.OSVersion.Version.Major > 5; }
-
-        // See: https://msdn.microsoft.com/en-us/library/hh925568(v=vs.110).aspx
-        public static bool IsSupportedRuntimeVersion()
+        public static bool IsTcpFastOpenSupported()
         {
-            /*
-             * +-----------------------------------------------------------------+----------------------------+
-             * | Version                                                         | Value of the Release DWORD |
-             * +-----------------------------------------------------------------+----------------------------+
-             * | .NET Framework 4.6.2 installed on Windows 10 Anniversary Update | 394802                     |
-             * | .NET Framework 4.6.2 installed on all other Windows OS versions | 394806                     |
-             * +-----------------------------------------------------------------+----------------------------+
-             */
-            const int minSupportedRelease = 394802;
-
-            const string subkey = @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\";
-            using (var ndpKey = OpenRegKey(subkey, false, RegistryHive.LocalMachine)) {
-                if (ndpKey?.GetValue("Release") != null) {
-                    var releaseKey = (int) ndpKey.GetValue("Release");
-
-                    if (releaseKey >= minSupportedRelease) {
-                        return true;
-                    }
+#if ZERO
+            const string subkey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+            using (var ndpKey = OpenRegKey(subkey, false, RegistryHive.LocalMachine))
+            {
+                try
+                {
+                    if (ndpKey == null) return false;
+                    var currentVersion = double.Parse(ndpKey.GetValue("CurrentVersion").ToString());
+                    var currentBuild = int.Parse(ndpKey.GetValue("CurrentBuild").ToString());
+                    if (currentVersion >= 6.3 && currentBuild >= 14393) return true;
+                    else return false;
+                }
+                catch (Exception e)
+                {
+                    return false;
                 }
             }
-            return false;
+#else
+            return Environment.OSVersion.Version.Major >= 10
+                && Environment.OSVersion.Version.Build >= 14393;
+#endif
         }
 
         #region BufferBlockCopy Wrapper

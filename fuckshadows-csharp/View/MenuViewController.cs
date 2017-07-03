@@ -48,11 +48,9 @@ namespace Fuckshadows.View
         private MenuItem _secureLocalPacUrlToggleItem;
         private MenuItem _autoCheckUpdatesToggleItem;
         private MenuItem _checkPreReleaseToggleItem;
-        private MenuItem _proxyItem;
         private MenuItem _hotKeyItem;
         private MenuItem _verboseLoggingToggleItem;
         private ConfigForm _configForm;
-        private ProxyForm _proxyForm;
         private LogForm _logForm;
         private HotkeySettingsForm _hotkeySettingsForm;
         private string _urlToOpen;
@@ -295,7 +293,6 @@ namespace Fuckshadows.View
                     this._editOnlinePacItem =
                         CreateMenuItem("Edit Online PAC URL...", new EventHandler(this.UpdateOnlinePACURLItem_Click)),
                 }),
-                this._proxyItem = CreateMenuItem("Forward Proxy...", new EventHandler(this.proxyItem_Click)),
                 new MenuItem("-"),
                 this._autoStartupItem = CreateMenuItem("Start on Boot", new EventHandler(this.AutoStartupItem_Click)),
                 this._shareOverLanItem =
@@ -496,21 +493,6 @@ namespace Fuckshadows.View
             }
         }
 
-        private void ShowProxyForm()
-        {
-            if (_proxyForm != null)
-            {
-                _proxyForm.Activate();
-            }
-            else
-            {
-                _proxyForm = new ProxyForm(controller);
-                _proxyForm.Show();
-                _proxyForm.Activate();
-                _proxyForm.FormClosed += proxyForm_FormClosed;
-            }
-        }
-
         private void ShowHotKeySettingsForm()
         {
             if (_hotkeySettingsForm != null)
@@ -557,12 +539,6 @@ namespace Fuckshadows.View
                 ShowFirstTimeBalloon();
                 _isFirstRun = false;
             }
-        }
-
-        void proxyForm_FormClosed(object sender, FormClosedEventArgs e)
-        {
-            _proxyForm.Dispose();
-            _proxyForm = null;
         }
 
         void hotkeySettingsForm_FormClosed(object sender, FormClosedEventArgs e)
@@ -898,11 +874,6 @@ namespace Fuckshadows.View
         private void checkUpdatesItem_Click(object sender, EventArgs e)
         {
             updateChecker.CheckUpdate(controller.GetConfigurationCopy());
-        }
-
-        private void proxyItem_Click(object sender, EventArgs e)
-        {
-            ShowProxyForm();
         }
 
         private void hotKeyItem_Click(object sender, EventArgs e)

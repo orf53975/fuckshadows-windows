@@ -15,6 +15,7 @@ namespace Fuckshadows
     {
         public static FuckshadowsController MainController { get; private set; }
         public static MenuViewController MenuController { get; private set; }
+        public static bool TFOSupported { get; private set; }
 
         /// <summary>
         /// 应用程序的主入口点。
@@ -22,24 +23,7 @@ namespace Fuckshadows
         [STAThread]
         static void Main()
         {
-            // Check OS since we are using dual-mode socket
-            if (!Utils.IsWinVistaOrHigher())
-            {
-                MessageBox.Show(I18N.GetString("Unsupported operating system, use Windows Vista at least."),
-                    "Fuckshadows Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            // Check .NET Framework version
-            if (!Utils.IsSupportedRuntimeVersion())
-            {
-                MessageBox.Show(I18N.GetString("Unsupported .NET Framework, please update to 4.6.2 or later."),
-                    "Fuckshadows Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-
-                Process.Start(
-                    "http://dotnetsocial.cloudapp.net/GetDotnet?tfm=.NETFramework,Version=v4.6.2");
-                return;
-            }
+            TFOSupported = Utils.IsTcpFastOpenSupported();
 
             using (Mutex mutex = new Mutex(false, $"Global\\Fuckshadows_{Application.StartupPath.GetHashCode()}"))
             {

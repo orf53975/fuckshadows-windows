@@ -84,6 +84,7 @@ namespace Fuckshadows.Controller
 
                 // Start an asynchronous socket to listen for connections.
                 Logging.Info("Fuckshadows started");
+                Logging.Info($"TFO: {Program.TFOSupported}");
                 _tcpSocket.BeginAccept(new AsyncCallback(AcceptCallback), _tcpSocket);
                 UDPState udpState = new UDPState { socket = _udpSocket };
                 _udpSocket.BeginReceiveFrom(udpState.buffer, 0, udpState.buffer.Length, 0, ref udpState.remoteEndPoint, new AsyncCallback(RecvFromCallback), udpState);
