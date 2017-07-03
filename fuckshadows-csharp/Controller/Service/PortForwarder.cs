@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.ServiceModel.Channels;
 using Fuckshadows.Util.Sockets;
 
 namespace Fuckshadows.Controller
@@ -9,9 +10,14 @@ namespace Fuckshadows.Controller
     {
         private readonly int _targetPort;
 
+        private readonly BufferManager _bm;
+        private const int MAX_HANDLER_NUM = 128;
+        private const int RecvSize = 2048;
+
         public PortForwarder(int targetPort)
         {
             _targetPort = targetPort;
+            _bm = BufferManager.CreateBufferManager((RecvSize + 2) * MAX_HANDLER_NUM, RecvSize + 2);
         }
 
         public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
@@ -20,8 +26,14 @@ namespace Fuckshadows.Controller
             {
                 return false;
             }
-            new Handler().Start(firstPacket, length, socket, _targetPort);
+            new Handler(_bm).Start(firstPacket, length, socket, _targetPort);
             return true;
+        }
+
+        public override void Stop()
+        {
+            _bm.Clear();
+            base.Stop();
         }
 
         private class Handler
@@ -33,14 +45,21 @@ namespace Fuckshadows.Controller
             private bool _closed = false;
             private bool _localShutdown = false;
             private bool _remoteShutdown = false;
-            private const int RecvSize = 2048;
+
+            private readonly BufferManager _bm;
+
             // remote receive buffer
-            private byte[] remoteRecvBuffer = new byte[RecvSize];
+            private byte[] remoteRecvBuffer;
             // connection receive buffer
-            private byte[] connetionRecvBuffer = new byte[RecvSize];
+            private byte[] connetionRecvBuffer;
 
             // instance-based lock
             private readonly object _Lock = new object();
+
+            public Handler(BufferManager bm)
+            {
+                this._bm = bm;
+            }
 
             public void Start(byte[] firstPacket, int length, Socket socket, int targetPort)
             {
@@ -49,6 +68,9 @@ namespace Fuckshadows.Controller
                 _local = socket;
                 try
                 {
+                    remoteRecvBuffer = _bm.TakeBuffer(RecvSize);
+                    connetionRecvBuffer = _bm.TakeBuffer(RecvSize);
+
                     EndPoint remoteEP = SocketUtil.GetEndPoint("127.0.0.1", targetPort);
 
                     // Connect to the remote endpoint.
@@ -253,6 +275,9 @@ namespace Fuckshadows.Controller
                         Logging.LogUsefulException(e);
                     }
                 }
+
+                _bm.ReturnBuffer(connetionRecvBuffer);
+                _bm.ReturnBuffer(remoteRecvBuffer);
             }
         }
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.ServiceModel.Channels;
 using System.Timers;
 using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
@@ -21,6 +22,8 @@ namespace Fuckshadows.Controller
         private Configuration _config;
 
         public ISet<TCPHandler> Handlers { get; set; }
+        public BufferManager _bm;
+        private const int MAX_HANDLER_NUM = 1024;
 
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {
@@ -28,6 +31,8 @@ namespace Fuckshadows.Controller
             _config = conf;
             Handlers = new HashSet<TCPHandler>();
             _lastSweepTime = DateTime.Now;
+            _bm = BufferManager.CreateBufferManager((TCPHandler.BufferSize + 2) * MAX_HANDLER_NUM,
+                TCPHandler.BufferSize + 2);
         }
 
         public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
@@ -76,6 +81,7 @@ namespace Fuckshadows.Controller
                 handlersToClose.AddRange(Handlers);
             }
             handlersToClose.ForEach(h => h.Close());
+            _bm.Clear();
         }
 
         public void UpdateInboundCounter(Server server, long n)
@@ -97,6 +103,8 @@ namespace Fuckshadows.Controller
     internal class TCPHandler
     {
         private readonly int _serverTimeout;
+
+        private readonly BufferManager _bm;
 
         // each recv size.
         public const int RecvSize = 2048;
@@ -158,16 +166,16 @@ namespace Fuckshadows.Controller
         private int _totalWrite = 0;
 
         // remote -> local proxy (ciphertext, before decrypt)
-        private byte[] _remoteRecvBuffer = new byte[BufferSize];
+        private byte[] _remoteRecvBuffer;
 
         // client -> local proxy (plaintext, before encrypt)
-        private byte[] _connetionRecvBuffer = new byte[BufferSize];
+        private byte[] _connetionRecvBuffer;
 
         // local proxy -> remote (plaintext, after decrypt)
-        private byte[] _remoteSendBuffer = new byte[BufferSize];
+        private byte[] _remoteSendBuffer;
 
         // local proxy -> client (ciphertext, before decrypt)
-        private byte[] _connetionSendBuffer = new byte[BufferSize];
+        private byte[] _connetionSendBuffer;
 
         private bool _connectionShutdown = false;
         private bool _remoteShutdown = false;
@@ -193,6 +201,8 @@ namespace Fuckshadows.Controller
             _connection = socket;
             _serverTimeout = config.GetCurrentServer().timeout * 1000;
 
+            this._bm = tcprelay._bm;
+
             lastActivity = DateTime.Now;
         }
 
@@ -216,6 +226,12 @@ namespace Fuckshadows.Controller
         {
             _firstPacket = firstPacket;
             _firstPacketLength = length;
+
+            _remoteRecvBuffer = _bm.TakeBuffer(BufferSize);
+            _remoteSendBuffer = _bm.TakeBuffer(BufferSize);
+            _connetionRecvBuffer = _bm.TakeBuffer(BufferSize);
+            _connetionSendBuffer = _bm.TakeBuffer(BufferSize);
+
             HandshakeReceive();
         }
 
@@ -799,6 +815,11 @@ namespace Fuckshadows.Controller
                     _encryptor?.Dispose();
                 }
             }
+
+            _bm.ReturnBuffer(_connetionSendBuffer);
+            _bm.ReturnBuffer(_connetionRecvBuffer);
+            _bm.ReturnBuffer(_remoteRecvBuffer);
+            _bm.ReturnBuffer(_remoteSendBuffer);
         }
     }
 }
