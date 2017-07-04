@@ -170,5 +170,7 @@ namespace Fuckshadows
                 MainController = null;
             }
         }
+
+        public static void DisableTFO() { TFOSupported = false; }
     }
 }

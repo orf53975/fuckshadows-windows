@@ -573,6 +573,14 @@ namespace Fuckshadows.Controller
                         return;
                     }
 
+                    if (e.BytesTransferred != e.Count) {
+                        // not sent all data, it may caused by TFO, disable it
+                        Logging.Info("Disable TCP Fast Open due to initial send failure");
+                        Program.DisableTFO();
+                        Close();
+                        return;
+                    }
+
                     ServerTimer timer = (ServerTimer)e.UserToken;
                     timer.Enabled = false;
                     timer.Elapsed -= DestConnectTimer_Elapsed;
