@@ -26,14 +26,20 @@ namespace Fuckshadows.Controller
         public BufferManager _bm;
         public const int MAX_HANDLER_NUM = 8192;
 
+        // each recv size.
+        public const int RecvSize = 2048;
+
+        // In general, the ciphertext length, we should take overhead into account
+        public const int BufferSize = RecvSize + (int)AEADEncryptor.MaxChunkSize + 32 /* max salt len */;
+
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {
             _controller = controller;
             _config = conf;
             Handlers = new HashSet<TCPHandler>();
             _lastSweepTime = DateTime.Now;
-            _bm = BufferManager.CreateBufferManager((TCPHandler.BufferSize + 2) * MAX_HANDLER_NUM,
-                TCPHandler.BufferSize + 2);
+            _bm = BufferManager.CreateBufferManager((BufferSize + 2) * MAX_HANDLER_NUM,
+                BufferSize + 2);
         }
 
         public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
@@ -119,18 +125,6 @@ namespace Fuckshadows.Controller
         private readonly int _serverTimeout;
 
         private readonly BufferManager _bm;
-
-        // each recv size.
-        public const int RecvSize = 2048;
-
-        // overhead of one chunk, reserved for AEAD ciphers
-        public const int ChunkOverheadSize = 16 * 2 /* two tags */ + AEADEncryptor.CHUNK_LEN_BYTES;
-
-        // max chunk size
-        public const uint MaxChunkSize = AEADEncryptor.CHUNK_LEN_MASK + AEADEncryptor.CHUNK_LEN_BYTES + 16 * 2;
-
-        // In general, the ciphertext length, we should take overhead into account
-        public const int BufferSize = RecvSize + (int) MaxChunkSize + 32 /* max salt len */;
 
         public static readonly byte[] Sock5HandshakeResponseReject = { 0, 0x5B /* other bytes are ignored */};
 
@@ -241,10 +235,10 @@ namespace Fuckshadows.Controller
             _firstPacket = firstPacket;
             _firstPacketLength = length;
 
-            _remoteRecvBuffer = _bm.TakeBuffer(BufferSize);
-            _remoteSendBuffer = _bm.TakeBuffer(BufferSize);
-            _connetionRecvBuffer = _bm.TakeBuffer(BufferSize);
-            _connetionSendBuffer = _bm.TakeBuffer(BufferSize);
+            _remoteRecvBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
+            _remoteSendBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
+            _connetionRecvBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
+            _connetionSendBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
 
             HandshakeReceive();
         }
@@ -289,7 +283,8 @@ namespace Fuckshadows.Controller
                 // +-----+-----+-------+------+----------+----------+
                 // |  1  |  1  | X'00' |  1   | Variable |    2     |
                 // +-----+-----+-------+------+----------+----------+
-                _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
+                _connection.BeginReceive(_connetionRecvBuffer, 0,
+                                         TCPRelay.RecvSize, SocketFlags.None,
                     HandshakeReceive2Callback, null);
             }
             catch (Exception e)
@@ -428,7 +423,8 @@ namespace Fuckshadows.Controller
                 if (ar.AsyncState != null)
                 {
                     _connection.EndSend(ar);
-                    _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
+                    _connection.BeginReceive(_connetionRecvBuffer, 0,
+                                             TCPRelay.RecvSize, SocketFlags.None,
                         ReadAll, null);
                 }
                 else
@@ -436,7 +432,8 @@ namespace Fuckshadows.Controller
                     int bytesRead = _connection.EndReceive(ar);
                     if (bytesRead > 0)
                     {
-                        _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
+                        _connection.BeginReceive(_connetionRecvBuffer, 0,
+                                                 TCPRelay.RecvSize, SocketFlags.None,
                             ReadAll, null);
                     }
                     else
@@ -483,7 +480,7 @@ namespace Fuckshadows.Controller
                 }
 
                 var encBytesLen = -1;
-                var encBuf = new byte[BufferSize];
+                var encBuf = new byte[TCPRelay.BufferSize];
                 // encrypt addr buf
                 lock (_encryptionLock)
                 {
@@ -619,10 +616,12 @@ namespace Fuckshadows.Controller
             try
             {
                 _startReceivingTime = DateTime.Now;
-                _remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
+                _remote.BeginReceive(_remoteRecvBuffer, 0,
+                                     TCPRelay.RecvSize, SocketFlags.None,
                     PipeRemoteReceiveCallback, null);
 
-                _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
+                _connection.BeginReceive(_connetionRecvBuffer, 0,
+                                         TCPRelay.RecvSize, SocketFlags.None,
                     PipeConnectionReceiveCallback, null);
             }
             catch (Exception e)
@@ -661,7 +660,8 @@ namespace Fuckshadows.Controller
                     {
                         // need more to decrypt
                         Logging.Debug("Need more to decrypt");
-                        _remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
+                        _remote.BeginReceive(_remoteRecvBuffer, 0,
+                                             TCPRelay.RecvSize, SocketFlags.None,
                             PipeRemoteReceiveCallback, null);
                         return;
                     }
@@ -752,7 +752,8 @@ namespace Fuckshadows.Controller
                         PipeRemoteSendCallback, bytesRemaining);
                     return;
                 }
-                _connection.BeginReceive(_connetionRecvBuffer, 0, RecvSize, SocketFlags.None,
+                _connection.BeginReceive(_connetionRecvBuffer, 0,
+                                         TCPRelay.RecvSize, SocketFlags.None,
                     PipeConnectionReceiveCallback, null);
             }
             catch (Exception e)
@@ -778,7 +779,8 @@ namespace Fuckshadows.Controller
                         PipeConnectionSendCallback, bytesRemaining);
                     return;
                 }
-                _remote.BeginReceive(_remoteRecvBuffer, 0, RecvSize, SocketFlags.None,
+                _remote.BeginReceive(_remoteRecvBuffer, 0,
+                                     TCPRelay.RecvSize, SocketFlags.None,
                     PipeRemoteReceiveCallback, null);
             }
             catch (Exception e)

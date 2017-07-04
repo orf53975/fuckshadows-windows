@@ -30,6 +30,17 @@ namespace Fuckshadows.Encryption.AEAD
         public const int FS_MAX_GARBAGE = 255 + FS_GARBAGE_LEN;
         public const int FS_GARBAGE_LEN = 1;
 
+        // overhead of one chunk, reserved for AEAD ciphers
+        public const int ChunkOverheadSize = 16 * 2 /* two tags */ + CHUNK_LEN_BYTES;
+
+        // max chunk size
+        public const uint MaxChunkSize = CHUNK_LEN_MASK + CHUNK_LEN_BYTES + 16 * 2;
+
+        public const int DefaultMSS = 536;
+
+        // For TFO, ensure no fragmentation in initial send
+        public const int MaxInitGarbageLen = DefaultMSS - (1 + 1 + 255 + 2) /* addrbuf max domain len */ - ChunkOverheadSize - 32 /* salt len */;
+
         protected Dictionary<string, EncryptorInfo> ciphers;
 
         protected string _method;
@@ -163,7 +174,7 @@ namespace Fuckshadows.Encryption.AEAD
                 // The first TCP request
                 int encAddrBufLength;
 
-                byte[] garbage = GetGarbage(AddrBufLength);
+                byte[] garbage = GetGarbage(AddrBufLength, true);
                 Logging.Debug("garbage len: " + garbage.Length);
 
                 byte[] encAddrBufBytes = new byte[garbage.Length + AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES];
@@ -185,7 +196,7 @@ namespace Fuckshadows.Encryption.AEAD
                 var chunklength = (int)Math.Min(bufSize, CHUNK_MAX_LEN_WITH_GARBAGE);
                 byte[] chunkBytes = _encCircularBuffer.Get(chunklength);
 
-                byte[] garbage = GetGarbage(chunklength);
+                byte[] garbage = GetGarbage(chunklength, false);
                 int garbageLength = garbage.Length;
                 Logging.Debug("garbage len: " + garbageLength);
                 byte[] chunkWithGarbage = new byte[chunklength + garbageLength];
@@ -201,7 +212,7 @@ namespace Fuckshadows.Encryption.AEAD
                 outlength += encChunkLength;
                 Logging.Debug("chunks enc outlength " + outlength);
                 // check if we have enough space for outbuf
-                if (outlength + TCPHandler.ChunkOverheadSize > TCPHandler.BufferSize) {
+                if (outlength + ChunkOverheadSize > TCPRelay.BufferSize) {
                     Logging.Debug("enc outbuf almost full, giving up");
                     return;
                 }
@@ -292,7 +303,7 @@ namespace Fuckshadows.Encryption.AEAD
                 PerfByteCopy(decChunkBytes, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
                 outlength += (int)decChunkLen - garbageLen;
                 Logging.Debug("aead dec outlength " + outlength);
-                if (outlength + 100 > TCPHandler.BufferSize)
+                if (outlength + 100 > TCPRelay.BufferSize)
                 {
                     Logging.Debug("dec outbuf almost full, giving up");
                     return;
@@ -368,7 +379,7 @@ namespace Fuckshadows.Encryption.AEAD
             cipherLen = (int) (encChunkLenLength + encBufLength);
         }
 
-        private static byte[] GetGarbage(int plaintextLength)
+        private static byte[] GetGarbage(int plaintextLength, bool isInitialSend)
         {
             if (plaintextLength > 1300)
             {
@@ -377,17 +388,22 @@ namespace Fuckshadows.Encryption.AEAD
             byte[] lenBytes = new byte[FS_GARBAGE_LEN];
             RNG.GetBytes(lenBytes);
             int len = lenBytes[0];
-            if (plaintextLength > 1200)
-            {
-                len &= 0x1F;
-            }
-            else if (plaintextLength > 900)
-            {
-                len &= 0x2F;
-            }
-            else if (plaintextLength > 400)
-            {
-                len &= 0x3F;
+            if (!isInitialSend) {
+                if (plaintextLength > 1200)
+                {
+                    len &= 0x1F;
+                }
+                else if (plaintextLength > 900)
+                {
+                    len &= 0x2F;
+                }
+                else if (plaintextLength > 400)
+                {
+                    len &= 0x3F;
+                }
+            } else {
+                // for TFO, don't exceed MSS
+                len = Math.Min(MaxInitGarbageLen, len);
             }
             byte[] ret = new byte[len + FS_GARBAGE_LEN];
             RNG.GetBytes(ret, FS_GARBAGE_LEN, len);
