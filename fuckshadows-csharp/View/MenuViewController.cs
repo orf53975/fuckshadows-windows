@@ -299,25 +299,22 @@ namespace Fuckshadows.View
                     CreateMenuItem("Allow Clients from LAN", new EventHandler(this.ShareOverLANItem_Click)),
                 new MenuItem("-"),
                 this._hotKeyItem = CreateMenuItem("Edit Hotkeys...", new EventHandler(this.hotKeyItem_Click)),
-                CreateMenuGroup("Help", new MenuItem[]
-                {
-                    CreateMenuItem("Show Logs...", new EventHandler(this.ShowLogItem_Click)),
-                    this._verboseLoggingToggleItem =
-                        CreateMenuItem("Verbose Logging", new EventHandler(this.VerboseLoggingToggleItem_Click)),
-                    CreateMenuGroup("Updates...", new MenuItem[]
-                    {
-                        CreateMenuItem("Check for Updates...", new EventHandler(this.checkUpdatesItem_Click)),
-                        new MenuItem("-"),
-                        this._autoCheckUpdatesToggleItem =
-                            CreateMenuItem("Check for Updates at Startup",
-                                new EventHandler(this.autoCheckUpdatesToggleItem_Click)),
-                        this._checkPreReleaseToggleItem =
-                            CreateMenuItem("Check Pre-release Version",
-                                new EventHandler(this.checkPreReleaseToggleItem_Click)),
-                    }),
-                    CreateMenuItem("About...", new EventHandler(this.AboutItem_Click)),
-                }),
+                CreateMenuItem("Show Logs...", new EventHandler(this.ShowLogItem_Click)),
+                this._verboseLoggingToggleItem =
+                    CreateMenuItem("Verbose Logging", new EventHandler(this.VerboseLoggingToggleItem_Click)),
                 new MenuItem("-"),
+                CreateMenuGroup("Updates...", new MenuItem[]
+                {
+                    CreateMenuItem("Check for Updates...", new EventHandler(this.checkUpdatesItem_Click)),
+                    new MenuItem("-"),
+                    this._autoCheckUpdatesToggleItem =
+                        CreateMenuItem("Check for Updates at Startup",
+                            new EventHandler(this.autoCheckUpdatesToggleItem_Click)),
+                    this._checkPreReleaseToggleItem =
+                        CreateMenuItem("Check Pre-release Version",
+                            new EventHandler(this.checkPreReleaseToggleItem_Click)),
+                }),
+                CreateMenuItem("About...", new EventHandler(this.AboutItem_Click)),
                 CreateMenuItem("Quit", new EventHandler(this.Quit_Click))
             });
         }
