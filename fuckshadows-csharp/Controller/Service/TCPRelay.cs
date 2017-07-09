@@ -809,8 +809,8 @@ namespace Fuckshadows.Controller
             }
             try
             {
-                _connection.Shutdown(SocketShutdown.Both);
-                _connection.Close();
+                _connection?.Shutdown(SocketShutdown.Both);
+                _connection?.Close();
             }
             catch (Exception e)
             {
@@ -819,8 +819,8 @@ namespace Fuckshadows.Controller
 
             try
             {
-                _remote.Shutdown(SocketShutdown.Both);
-                _remote.Close();
+                _remote?.Shutdown(SocketShutdown.Both);
+                _remote?.Close();
             }
             catch (Exception e)
             {
