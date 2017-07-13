@@ -143,8 +143,10 @@ namespace Fuckshadows.Util.SystemProxy
             try {
                 string configContent = File.ReadAllText(_userWininetConfigFile);
                 _userSettings = JsonConvert.DeserializeObject<SysproxyConfig>(configContent);
-            } catch (FileNotFoundException) {
-                _userSettings = new SysproxyConfig();
+            } catch (Exception) {
+                // suppress all exceptions
+            } finally {
+                if (_userSettings == null) _userSettings = new SysproxyConfig();
             }
         }
 
