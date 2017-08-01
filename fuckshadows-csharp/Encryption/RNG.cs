@@ -6,7 +6,7 @@ namespace Fuckshadows.Encryption
     {
         public static void GetBytes(byte[] buf)
         {
-            GetBytes(buf, buf.Length);
+            Sodium.randombytes_buf(buf, buf.Length);
         }
 
         public static void GetBytes(byte[] data, int offset, int count)
