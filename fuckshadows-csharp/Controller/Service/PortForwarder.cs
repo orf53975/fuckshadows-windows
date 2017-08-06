@@ -1,7 +1,8 @@
 ﻿using System;
-using System.Net;
+using System.Diagnostics;
 using System.Net.Sockets;
-using System.ServiceModel.Channels;
+using System.Threading;
+using System.Threading.Tasks;
 using Fuckshadows.Util.Sockets;
 
 namespace Fuckshadows.Controller
@@ -9,76 +10,87 @@ namespace Fuckshadows.Controller
     class PortForwarder : Listener.Service
     {
         private readonly int _targetPort;
-
-        private readonly BufferManager _bm;
+        private SaeaAwaitablePool _argsPool;
+        public const int RecvSize = 8192;
         private const int MAX_HANDLER_NUM = TCPRelay.MAX_HANDLER_NUM;
-        private const int RecvSize = 2048;
 
         public PortForwarder(int targetPort)
         {
             _targetPort = targetPort;
-            _bm = BufferManager.CreateBufferManager((RecvSize + 2) * MAX_HANDLER_NUM, RecvSize + 2);
+            InitArgsPool();
         }
 
-        public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
+        private void InitArgsPool()
         {
+            _argsPool = new SaeaAwaitablePool();
+            _argsPool.SetInitPoolSize(512);
+            _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
+            _argsPool.SetEachBufSize(RecvSize);
+            _argsPool.SetNumOfOpsToPreAlloc(2);
+            _argsPool.FinishConfig();
+        }
+
+        public override bool Handle(ServiceUserToken obj)
+        {
+            Socket socket = obj.socket;
             if (socket.ProtocolType != ProtocolType.Tcp)
             {
                 return false;
             }
-            new Handler(_bm).Start(firstPacket, length, socket, _targetPort);
+            byte[] firstPacket = obj.firstPacket;
+            int length = obj.firstPacketLength;
+
+            new Handler().Start(firstPacket, length, socket, _targetPort, _argsPool);
             return true;
         }
 
         public override void Stop()
         {
-            _bm.Clear();
-            base.Stop();
+            _argsPool.Dispose();
         }
 
         private class Handler
         {
+            private SaeaAwaitablePool _argsPool;
             private byte[] _firstPacket;
             private int _firstPacketLength;
             private Socket _local;
+
             private Socket _remote;
-            private bool _closed = false;
+
+            //private bool _closed = false;
             private bool _localShutdown = false;
+
             private bool _remoteShutdown = false;
-
-            private readonly BufferManager _bm;
-
-            // remote receive buffer
-            private byte[] remoteRecvBuffer;
-            // connection receive buffer
-            private byte[] connetionRecvBuffer;
 
             // instance-based lock
             private readonly object _Lock = new object();
 
-            public Handler(BufferManager bm)
-            {
-                this._bm = bm;
-            }
+            private int _state = _none;
+            private const int _none = 0;
+            private const int _running = 1;
+            private const int _disposed = 5;
 
-            public void Start(byte[] firstPacket, int length, Socket socket, int targetPort)
+            public bool IsRunning => _state == _running;
+
+            public void Start(byte[] firstPacket, int length, Socket socket, int targetPort, SaeaAwaitablePool pool)
             {
                 _firstPacket = firstPacket;
                 _firstPacketLength = length;
                 _local = socket;
+                _argsPool = pool;
+
+                Interlocked.Exchange(ref _state, _running);
+
                 try
                 {
-                    remoteRecvBuffer = _bm.TakeBuffer(RecvSize);
-                    connetionRecvBuffer = _bm.TakeBuffer(RecvSize);
-
-                    _local.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
-
-                    EndPoint remoteEP = SocketUtil.GetEndPoint("127.0.0.1", targetPort);
-
                     // Connect to the remote endpoint.
                     _remote = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                     _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
-                    _remote.BeginConnect(remoteEP, ConnectCallback, null);
+                    _remote.SetTFO();
+
+                    Task.Factory.StartNew(async () => { await StartConnect(targetPort); },
+                        TaskCreationOptions.PreferFairness);
                 }
                 catch (Exception e)
                 {
@@ -87,151 +99,186 @@ namespace Fuckshadows.Controller
                 }
             }
 
-            private void ConnectCallback(IAsyncResult ar)
+            private async Task StartConnect(int port)
             {
-                if (_closed)
-                {
-                    return;
-                }
+                SaeaAwaitable tcpSaea = null;
                 try
                 {
-                    _remote.EndConnect(ar);
-                    HandshakeReceive();
-                }
-                catch (Exception e)
-                {
-                    Logging.LogUsefulException(e);
-                    Close();
-                }
-            }
-
-            private void HandshakeReceive()
-            {
-                if (_closed)
-                {
-                    return;
-                }
-                try
-                {
-                    _remote.BeginSend(_firstPacket, 0, _firstPacketLength, 0, StartPipe, null);
-                }
-                catch (Exception e)
-                {
-                    Logging.LogUsefulException(e);
-                    Close();
-                }
-            }
-
-            private void StartPipe(IAsyncResult ar)
-            {
-                if (_closed)
-                {
-                    return;
-                }
-                try
-                {
-                    _remote.EndSend(ar);
-                    _remote.BeginReceive(remoteRecvBuffer, 0, RecvSize, 0,
-                        PipeRemoteReceiveCallback, null);
-                    _local.BeginReceive(connetionRecvBuffer, 0, RecvSize, 0,
-                        PipeConnectionReceiveCallback, null);
-                }
-                catch (Exception e)
-                {
-                    Logging.LogUsefulException(e);
-                    Close();
-                }
-            }
-
-            private void PipeRemoteReceiveCallback(IAsyncResult ar)
-            {
-                if (_closed)
-                {
-                    return;
-                }
-                try
-                {
-                    int bytesRead = _remote.EndReceive(ar);
-                    if (bytesRead > 0)
+                    tcpSaea = _argsPool.Rent();
+                    var realSaea = tcpSaea.Saea;
+                    realSaea.RemoteEndPoint = SocketUtil.GetEndPoint("127.0.0.1", port);
+                    tcpSaea.PrepareSAEABuffer(_firstPacket, _firstPacketLength);
+                    var ret = await _remote.ConnectAsync(tcpSaea);
+                    if (ret != SocketError.Success)
                     {
-                        _local.BeginSend(remoteRecvBuffer, 0, bytesRead, 0, PipeConnectionSendCallback, null);
+                        Close();
+                        return;
                     }
-                    else
-                    {
-                        _local.Shutdown(SocketShutdown.Send);
-                        _localShutdown = true;
-                        CheckClose();
-                    }
+
+                    Task.Factory.StartNew(StartPipe, TaskCreationOptions.PreferFairness).Forget();
                 }
                 catch (Exception e)
                 {
                     Logging.LogUsefulException(e);
                     Close();
                 }
+                finally
+                {
+                    _argsPool.Return(ref tcpSaea);
+                }
             }
 
-            private void PipeConnectionReceiveCallback(IAsyncResult ar)
+
+            private void StartPipe()
             {
-                if (_closed)
-                {
-                    return;
-                }
+                Task.Factory.StartNew(async () => { await Upstream(); }, TaskCreationOptions.AttachedToParent);
+                Task.Factory.StartNew(async () => { await Downstream(); }, TaskCreationOptions.AttachedToParent);
+            }
+
+            private static bool IsShutdown(SocketExtensions.TcpTrafficToken token)
+            {
+                var err = token.SocketError;
+                var bytesTransferred = token.BytesTotalTransferred;
+                return err == SocketError.Success && bytesTransferred <= 0;
+            }
+
+            // server recv -> local send
+            private async Task Downstream()
+            {
+                SaeaAwaitable serverRecvSaea = null;
+                SaeaAwaitable localSendSaea = null;
                 try
                 {
-                    int bytesRead = _local.EndReceive(ar);
-                    if (bytesRead > 0)
+                    while (IsRunning)
                     {
-                        _remote.BeginSend(connetionRecvBuffer, 0, bytesRead, 0, PipeRemoteSendCallback, null);
-                    }
-                    else
-                    {
-                        _remote.Shutdown(SocketShutdown.Send);
-                        _remoteShutdown = true;
-                        CheckClose();
+                        serverRecvSaea = _argsPool.Rent();
+                        var token = await _remote.FullReceiveTaskAsync(serverRecvSaea, RecvSize);
+                        var err = token.SocketError;
+                        var bytesRecved = token.BytesTotalTransferred;
+                        Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
+
+                        if (IsShutdown(token))
+                        {
+                            //lock (_closeConnLock)
+                            //{
+                            _local.Shutdown(SocketShutdown.Send);
+                            _localShutdown = true;
+                            CheckClose();
+                            //}
+                            return;
+                        }
+                        if (err != SocketError.Success)
+                        {
+                            Logging.Debug($"Downstream server recv socket err: {err}");
+                            Close();
+                            return;
+                        }
+                        Debug.Assert(bytesRecved <= RecvSize);
+
+
+                        localSendSaea = _argsPool.Rent();
+                        Buffer.BlockCopy(serverRecvSaea.Saea.Buffer, 0, localSendSaea.Saea.Buffer, 0,
+                            bytesRecved);
+                        _argsPool.Return(ref serverRecvSaea);
+
+                        token = await _local.FullSendTaskAsync(localSendSaea, bytesRecved);
+                        err = token.SocketError;
+                        var bytesSent = token.BytesTotalTransferred;
+                        Logging.Debug($"Downstream local send socket err: {err},{bytesSent}");
+                        if (err != SocketError.Success)
+                        {
+                            Close();
+                            return;
+                        }
+                        Debug.Assert(bytesSent == bytesRecved);
                     }
                 }
+                catch (AggregateException agex)
+                {
+                    foreach (var ex in agex.InnerExceptions)
+                    {
+                        Logging.LogUsefulException(ex);
+                    }
+                    Close();
+                }
                 catch (Exception e)
                 {
                     Logging.LogUsefulException(e);
                     Close();
+                }
+                finally
+                {
+                    _argsPool.Return(ref serverRecvSaea);
+                    _argsPool.Return(ref localSendSaea);
                 }
             }
 
-            private void PipeRemoteSendCallback(IAsyncResult ar)
+            // local recv -> server send
+            private async Task Upstream()
             {
-                if (_closed)
-                {
-                    return;
-                }
+                SaeaAwaitable localRecvSaea = null;
+                SaeaAwaitable serverSendSaea = null;
                 try
                 {
-                    _remote.EndSend(ar);
-                    _local.BeginReceive(connetionRecvBuffer, 0, RecvSize, 0,
-                        PipeConnectionReceiveCallback, null);
-                }
-                catch (Exception e)
-                {
-                    Logging.LogUsefulException(e);
-                    Close();
-                }
-            }
+                    while (IsRunning)
+                    {
+                        localRecvSaea = _argsPool.Rent();
+                        var token = await _local.FullReceiveTaskAsync(localRecvSaea, RecvSize);
+                        var err = token.SocketError;
+                        var bytesRecved = token.BytesTotalTransferred;
+                        Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
+                        if (IsShutdown(token))
+                        {
+                            //lock (_closeConnLock)
+                            //{
+                            _remote.Shutdown(SocketShutdown.Send);
+                            _remoteShutdown = true;
+                            CheckClose();
+                            //}
+                            return;
+                        }
+                        if (err != SocketError.Success)
+                        {
+                            Logging.Debug($"Upstream local recv socket err: {err}");
+                            Close();
+                            return;
+                        }
+                        Debug.Assert(bytesRecved <= RecvSize);
 
-            private void PipeConnectionSendCallback(IAsyncResult ar)
-            {
-                if (_closed)
-                {
-                    return;
+                        serverSendSaea = _argsPool.Rent();
+                        Buffer.BlockCopy(localRecvSaea.Saea.Buffer, 0, serverSendSaea.Saea.Buffer, 0,
+                            bytesRecved);
+                        _argsPool.Return(ref localRecvSaea);
+
+                        token = await _remote.FullSendTaskAsync(serverSendSaea, bytesRecved);
+                        err = token.SocketError;
+                        var bytesSent = token.BytesTotalTransferred;
+                        Logging.Debug($"Upstream server send: {err},{bytesSent}");
+                        if (err != SocketError.Success)
+                        {
+                            Close();
+                            return;
+                        }
+                        Debug.Assert(bytesSent == bytesRecved);
+                    }
                 }
-                try
+                catch (AggregateException agex)
                 {
-                    _local.EndSend(ar);
-                    _remote.BeginReceive(remoteRecvBuffer, 0, RecvSize, 0,
-                        PipeRemoteReceiveCallback, null);
+                    foreach (var ex in agex.InnerExceptions)
+                    {
+                        Logging.LogUsefulException(ex);
+                    }
+                    Close();
                 }
                 catch (Exception e)
                 {
                     Logging.LogUsefulException(e);
                     Close();
+                }
+                finally
+                {
+                    _argsPool.Return(ref localRecvSaea);
+                    _argsPool.Return(ref serverSendSaea);
                 }
             }
 
@@ -245,41 +292,31 @@ namespace Fuckshadows.Controller
 
             public void Close()
             {
-                lock (_Lock)
+                int origin = Interlocked.CompareExchange(ref _state, _disposed, _running);
+                if (origin == _disposed)
                 {
-                    if (_closed)
-                    {
-                        return;
-                    }
-                    _closed = true;
-                }
-                if (_local != null)
-                {
-                    try
-                    {
-                        _local.Shutdown(SocketShutdown.Both);
-                        _local.Close();
-                    }
-                    catch (Exception e)
-                    {
-                        Logging.LogUsefulException(e);
-                    }
-                }
-                if (_remote != null)
-                {
-                    try
-                    {
-                        _remote.Shutdown(SocketShutdown.Both);
-                        _remote.Dispose();
-                    }
-                    catch (SocketException e)
-                    {
-                        Logging.LogUsefulException(e);
-                    }
+                    return;
                 }
 
-                _bm.ReturnBuffer(connetionRecvBuffer);
-                _bm.ReturnBuffer(remoteRecvBuffer);
+                try
+                {
+                    _local?.Shutdown(SocketShutdown.Both);
+                    _local?.Close();
+                }
+                catch (Exception e)
+                {
+                    Logging.LogUsefulException(e);
+                }
+
+                try
+                {
+                    _remote?.Shutdown(SocketShutdown.Both);
+                    _remote?.Close();
+                }
+                catch (Exception e)
+                {
+                    Logging.LogUsefulException(e);
+                }
             }
         }
     }

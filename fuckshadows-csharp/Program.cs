@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Fuckshadows.Controller.Hotkeys;
@@ -32,6 +33,8 @@ namespace Fuckshadows
                 Application.ThreadException += Application_ThreadException;
                 // handle non-UI exceptions
                 AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+                // handle unobserved Task exceptions
+                TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
                 Application.ApplicationExit += Application_ApplicationExit;
                 SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
                 Application.EnableVisualStyles();
@@ -157,12 +160,31 @@ namespace Fuckshadows
             }
         }
 
+        private static void TaskScheduler_UnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        {
+            if (Interlocked.Increment(ref exited) == 1)
+            {
+                var exps = e.Exception.InnerExceptions;
+                string errMsg = String.Empty;
+                foreach (var exp in exps)
+                {
+                    errMsg += exp.ToString();
+                }
+                Logging.Error(errMsg);
+                MessageBox.Show(
+                                $"{I18N.GetString("Unexpected error, fuckshadows will exit. Please report to")} https://github.com/Fuckshadows/Fuckshadows-windows/issues {Environment.NewLine}{errMsg}",
+                                "Fuckshadows Task Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Application.Exit();
+            }
+        }
+
         private static void Application_ApplicationExit(object sender, EventArgs e)
         {
             // detach static event handlers
             Application.ApplicationExit -= Application_ApplicationExit;
             SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
             Application.ThreadException -= Application_ThreadException;
+            TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             HotKeys.Destroy();
             if (MainController != null)
             {

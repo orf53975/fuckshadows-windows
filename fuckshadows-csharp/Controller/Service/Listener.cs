@@ -3,39 +3,32 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Fuckshadows.Model;
+using Fuckshadows.Util.Sockets;
 
-// TODO: check IPv6 connections
 namespace Fuckshadows.Controller
 {
-    public class Listener
+    public partial class Listener
     {
-        public interface IService
-        {
-            bool Handle(byte[] firstPacket, int length, Socket socket, object state);
+        private Configuration _config;
+        private bool _shareOverLan;
+        private Socket _tcpListenerSocket;
+        private Socket _udpSocket;
+        private readonly List<IService> _services;
+        private SaeaAwaitablePool _acceptArgsPool;
+        private SaeaAwaitablePool _argsPool;
 
-            void Stop();
-        }
+        private const int BACKLOG = 1024;
+        private const int MaxFirstPacketLen = 4096;
 
-        public abstract class Service : IService
-        {
-            public abstract bool Handle(byte[] firstPacket, int length, Socket socket, object state);
+        private int _state;
+        private const int _none = 0;
+        private const int _listening = 1;
+        private const int _disposed = 5;
 
-            public virtual void Stop() { }
-        }
-
-        public class UDPState
-        {
-            public Socket socket;
-            public byte[] buffer = new byte[4096];
-            public EndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-        }
-
-        Configuration _config;
-        bool _shareOverLAN;
-        Socket _tcpSocket;
-        Socket _udpSocket;
-        List<IService> _services;
+        public bool IsListening => _state == _listening;
 
         public Listener(List<IService> services)
         {
@@ -57,51 +50,209 @@ namespace Fuckshadows.Controller
             return false;
         }
 
+        private void InitArgsPool()
+        {
+            //accept args pool don't need buffer
+            _acceptArgsPool = new SaeaAwaitablePool();
+            _acceptArgsPool.SetInitPoolSize(256);
+            _acceptArgsPool.SetMaxPoolSize(BACKLOG);
+            _acceptArgsPool.SetNoSetBuffer();
+            _acceptArgsPool.SetNumOfOpsToPreAlloc(1);
+            _acceptArgsPool.FinishConfig();
+
+            // first packet handling pool
+            _argsPool = new SaeaAwaitablePool();
+            _argsPool.SetInitPoolSize(256);
+            _argsPool.SetMaxPoolSize(8192);
+            _argsPool.SetEachBufSize(MaxFirstPacketLen);
+            _argsPool.SetNumOfOpsToPreAlloc(2);
+            _argsPool.FinishConfig();
+        }
+
         public void Start(Configuration config)
         {
             this._config = config;
-            this._shareOverLAN = config.shareOverLan;
+            this._shareOverLan = config.shareOverLan;
+
+            int origin = Interlocked.CompareExchange(ref _state, _listening, _none);
+            if (origin == _disposed)
+            {
+                throw new ObjectDisposedException(GetType().FullName);
+            }
+            else if (origin != _none)
+            {
+                throw new InvalidOperationException("Listener has already started.");
+            }
 
             if (CheckIfPortInUse(_config.localPort))
                 throw new Exception(I18N.GetString("Port already in use"));
 
             try
             {
+                InitArgsPool();
                 // Create a TCP/IP socket.
-                _tcpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                _tcpListenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                 _udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                _tcpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _tcpListenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                IPEndPoint localEndPoint = null;
-                localEndPoint = _shareOverLAN
+                IPEndPoint localEndPoint = _shareOverLan
                     ? new IPEndPoint(IPAddress.Any, _config.localPort)
                     : new IPEndPoint(IPAddress.Loopback, _config.localPort);
 
+                _tcpListenerSocket.SetTFO();
                 // Bind the socket to the local endpoint and listen for incoming connections.
-                _tcpSocket.Bind(localEndPoint);
+                _tcpListenerSocket.Bind(localEndPoint);
                 _udpSocket.Bind(localEndPoint);
-                _tcpSocket.Listen(1024);
+                _tcpListenerSocket.Listen(BACKLOG);
 
                 // Start an asynchronous socket to listen for connections.
                 Logging.Info("Fuckshadows started");
                 Logging.Info($"TFO: {Program.TFOSupported}");
-                _tcpSocket.BeginAccept(new AsyncCallback(AcceptCallback), _tcpSocket);
-                UDPState udpState = new UDPState { socket = _udpSocket };
-                _udpSocket.BeginReceiveFrom(udpState.buffer, 0, udpState.buffer.Length, 0, ref udpState.remoteEndPoint, new AsyncCallback(RecvFromCallback), udpState);
+
+                Task.Run(async () => { await Accept(); });
+
+                Task.Run(async () => { await StartRecvFrom(); });
             }
             catch (SocketException)
             {
-                _tcpSocket.Close();
+                _tcpListenerSocket.Close();
                 throw;
+            }
+        }
+
+        private async Task StartRecvFrom()
+        {
+            SaeaAwaitable udpSaea = null;
+            try
+            {
+                while (IsListening)
+                {
+                    udpSaea = _argsPool.Rent();
+                    udpSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                    var err = await _udpSocket.ReceiveFromAsync(udpSaea);
+                    ServiceUserToken token = new ServiceUserToken();
+                    if (err == SocketError.Success)
+                    {
+                        var e = udpSaea.Saea;
+                        token.socket = _udpSocket;
+                        token.firstPacket = new byte[e.BytesTransferred];
+                        token.firstPacketLength = e.BytesTransferred;
+                        token.remoteEndPoint = e.RemoteEndPoint;
+                        Buffer.BlockCopy(e.Buffer, e.Offset, token.firstPacket, 0, e.BytesTransferred);
+                    }
+                    _argsPool.Return(ref udpSaea);
+
+                    foreach (IService service in _services)
+                    {
+                        if (service.Handle(token))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Logging.LogUsefulException(e);
+            }
+            finally
+            {
+                _argsPool.Return(ref udpSaea);
+            }
+        }
+
+        private async Task Accept()
+        {
+            SaeaAwaitable saea = null;
+            try
+            {
+                while (IsListening)
+                {
+                    saea = _acceptArgsPool.Rent();
+
+                    var socketError = await _tcpListenerSocket.AcceptAsync(saea);
+                    if (socketError == SocketError.Success)
+                    {
+                        Logging.Debug("accepted a connection");
+                        var acceptedSocket = saea.Saea.AcceptSocket;
+                        Task.Factory.StartNew(async () => { await RecvFirstPacket(acceptedSocket); },
+                            TaskCreationOptions.PreferFairness).Forget();
+                    }
+                    else
+                    {
+                        Logging.Error($"Accept socket err: {socketError}");
+                    }
+                    _acceptArgsPool.Return(ref saea);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.LogUsefulException(ex);
+            }
+            finally
+            {
+                _acceptArgsPool.Return(ref saea);
+            }
+        }
+
+        private async Task RecvFirstPacket(Socket clientSocket)
+        {
+            SaeaAwaitable arg = null;
+            try
+            {
+                arg = _argsPool.Rent();
+                var token = await clientSocket.FullReceiveTaskAsync(arg, MaxFirstPacketLen);
+                var err = token.SocketError;
+                var serviceToken = new ServiceUserToken();
+                var bytesReceived = token.BytesTotalTransferred;
+                Logging.Debug($"RecvFirstPacket: {err},{bytesReceived}");
+                if (err == SocketError.Success)
+                {
+                    serviceToken.socket = clientSocket;
+                    serviceToken.firstPacket = new byte[bytesReceived];
+                    Buffer.BlockCopy(arg.Saea.Buffer, 0, serviceToken.firstPacket, 0, bytesReceived);
+                    serviceToken.firstPacketLength = bytesReceived;
+                }
+                else
+                {
+                    Logging.Error($"RecvFirstPacket socket err: {err}");
+                }
+                _argsPool.Return(ref arg);
+
+                foreach (IService service in _services)
+                {
+                    if (service.Handle(serviceToken))
+                    {
+                        return;
+                    }
+                }
+                // no service found for this
+                if (clientSocket.ProtocolType == ProtocolType.Tcp)
+                {
+                    clientSocket.Close();
+                }
+            }
+            catch (Exception e)
+            {
+                Logging.Error(e);
+            }
+            finally
+            {
+                _argsPool.Return(ref arg);
             }
         }
 
         public void Stop()
         {
-            if (_tcpSocket != null)
+            if (Interlocked.Exchange(ref _state, _disposed) == _disposed)
             {
-                _tcpSocket.Close();
-                _tcpSocket = null;
+                return;
+            }
+
+            if (_tcpListenerSocket != null)
+            {
+                _tcpListenerSocket.Close();
+                _tcpListenerSocket = null;
             }
             if (_udpSocket != null)
             {
@@ -109,116 +260,10 @@ namespace Fuckshadows.Controller
                 _udpSocket = null;
             }
 
-            _services.ForEach(s=>s.Stop());
-        }
+            _services.ForEach(s => s.Stop());
 
-        public void RecvFromCallback(IAsyncResult ar)
-        {
-            UDPState state = (UDPState)ar.AsyncState;
-            var socket = state.socket;
-            try
-            {
-                int bytesRead = socket.EndReceiveFrom(ar, ref state.remoteEndPoint);
-                foreach (IService service in _services)
-                {
-                    if (service.Handle(state.buffer, bytesRead, socket, state))
-                    {
-                        break;
-                    }
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                Logging.Debug(ex);
-            }
-            finally
-            {
-                try
-                {
-                    socket.BeginReceiveFrom(state.buffer, 0, state.buffer.Length, 0, ref state.remoteEndPoint, new AsyncCallback(RecvFromCallback), state);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // do nothing
-                }
-                catch (Exception)
-                {
-                }
-            }
-        }
-
-        public void AcceptCallback(IAsyncResult ar)
-        {
-            Socket listener = (Socket)ar.AsyncState;
-            try
-            {
-                Socket conn = listener.EndAccept(ar);
-
-                byte[] buf = new byte[4096];
-                object[] state = new object[] {
-                    conn,
-                    buf
-                };
-
-                conn.BeginReceive(buf, 0, buf.Length, 0,
-                    new AsyncCallback(ReceiveCallback), state);
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-            }
-            finally
-            {
-                try
-                {
-                    listener.BeginAccept(
-                        new AsyncCallback(AcceptCallback),
-                        listener);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // do nothing
-                }
-                catch (Exception e)
-                {
-                    Logging.LogUsefulException(e);
-                }
-            }
-        }
-
-        private void ReceiveCallback(IAsyncResult ar)
-        {
-            object[] state = (object[])ar.AsyncState;
-
-            Socket conn = (Socket)state[0];
-            byte[] buf = (byte[])state[1];
-            try
-            {
-                int bytesRead = conn.EndReceive(ar);
-                foreach (IService service in _services)
-                {
-                    if (service.Handle(buf, bytesRead, conn, null))
-                    {
-                        return;
-                    }
-                }
-                // no service found for this
-                if (conn.ProtocolType == ProtocolType.Tcp)
-                {
-                    conn.Close();
-                }
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-                conn.Close();
-            }
+            _acceptArgsPool.Dispose();
+            _argsPool.Dispose();
         }
     }
 }

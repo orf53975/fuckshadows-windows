@@ -13,6 +13,7 @@ using Fuckshadows.Properties;
 using Fuckshadows.Util;
 using Newtonsoft.Json;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Fuckshadows.Controller
 {
@@ -264,7 +265,11 @@ namespace Fuckshadows.Controller
 
         public void UpdatePACFromGFWList()
         {
-            gfwListUpdater?.UpdatePACFromGFWList(_config);
+            if (gfwListUpdater != null)
+            {
+                Task.Factory.StartNew(async () => { await gfwListUpdater.UpdatePACFromGFWList(_config); },
+                    TaskCreationOptions.PreferFairness);
+            }
         }
 
         public void UpdateStatisticsConfiguration(bool enabled)
@@ -402,7 +407,7 @@ namespace Fuckshadows.Controller
 
                 TCPRelay tcpRelay = new TCPRelay(this, _config);
                 UDPRelay udpRelay = new UDPRelay(this);
-                List<Listener.IService> services = new List<Listener.IService>
+                List<IService> services = new List<IService>
                 {
                     tcpRelay,
                     udpRelay,

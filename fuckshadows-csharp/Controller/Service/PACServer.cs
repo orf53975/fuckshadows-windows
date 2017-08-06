@@ -1,14 +1,17 @@
 ﻿using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 using Fuckshadows.Encryption;
 using Fuckshadows.Model;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
+using Fuckshadows.Util.Sockets;
 
 namespace Fuckshadows.Controller
 {
@@ -59,8 +62,12 @@ namespace Fuckshadows.Controller
             return value.ToString("yyyyMMddHHmmssfff");
         }
 
-        public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
+        public override bool Handle(ServiceUserToken obj)
         {
+            byte[] firstPacket = obj.firstPacket;
+            int length = obj.firstPacketLength;
+            Socket socket = obj.socket;
+            if (socket == null) return false;
             if (socket.ProtocolType != ProtocolType.Tcp)
             {
                 return false;
@@ -115,7 +122,10 @@ namespace Fuckshadows.Controller
                     }
                     else
                     {
-                        SendResponse(firstPacket, length, socket, useSocks);
+                        Task.Factory.StartNew(
+                            async () => { await SendResponse(firstPacket, length, socket, useSocks); },
+                            TaskCreationOptions.PreferFairness);
+
                     }
                     return true;
                 }
@@ -125,6 +135,11 @@ namespace Fuckshadows.Controller
             {
                 return false;
             }
+        }
+
+        public override void Stop()
+        {
+            // nothing to dispose
         }
 
         public string TouchPACFile()
@@ -168,27 +183,41 @@ namespace Fuckshadows.Controller
         private const string HTTP_CRLF = "\r\n";
         private const string HTTP_OK_TEMPLATE =
             "HTTP/1.1 200 OK" + HTTP_CRLF +
-            "Server: Fuckshadows" + HTTP_CRLF +
+            "Server: Shadowsocks" + HTTP_CRLF +
             "Content-Type: application/x-ns-proxy-autoconfig" + HTTP_CRLF +
             "Content-Length: {0}" + HTTP_CRLF +
             "Connection: Close" + HTTP_CRLF +
             HTTP_CRLF; // End with an empty line
 
-        private void SendResponse(byte[] firstPacket, int length, Socket socket, bool useSocks)
+        public async Task SendResponse(byte[] firstPacket, int length, Socket socket, bool useSocks)
         {
             try
             {
-                string pac = GetPACContent();
+                using (var saea = new SaeaAwaitable())
+                {
+                    string pac = GetPACContent();
 
-                IPEndPoint localEndPoint = (IPEndPoint) socket.LocalEndPoint;
+                    IPEndPoint localEndPoint = (IPEndPoint) socket.LocalEndPoint;
 
-                string proxy = GetPACAddress(firstPacket, length, localEndPoint, useSocks);
+                    string proxy = GetPACAddress(firstPacket, length, localEndPoint, useSocks);
 
-                pac = pac.Replace("__PROXY__", proxy);
+                    pac = pac.Replace("__PROXY__", proxy);
 
-                string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
-                byte[] response = Encoding.UTF8.GetBytes(text);
-                socket.BeginSend(response, 0, response.Length, 0, new AsyncCallback(SendCallback), socket);
+                    string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
+                    byte[] response = Encoding.UTF8.GetBytes(text);
+                    saea.Saea.SetBuffer(response, 0, response.Length);
+                    var ret = await socket.FullSendTaskAsync(saea, response.Length);
+                    var err = ret.SocketError;
+                    var bytesSent = ret.BytesTotalTransferred;
+                    if (err != SocketError.Success)
+                    {
+                        Logging.Error($"PAC send err: {err}");
+                        socket.Close();
+                        return;
+                    }
+                    Debug.Assert(bytesSent == response.Length);
+                    socket.Shutdown(SocketShutdown.Send);
+                }
             }
             catch (Exception e)
             {
@@ -197,27 +226,14 @@ namespace Fuckshadows.Controller
             }
         }
 
-        private void SendCallback(IAsyncResult ar)
-        {
-            Socket conn = (Socket) ar.AsyncState;
-            try
-            {
-                conn.Shutdown(SocketShutdown.Send);
-            }
-            catch
-            {
-            }
-        }
-
         private void WatchPacFile()
         {
-            if (PACFileWatcher != null)
+            PACFileWatcher?.Dispose();
+            PACFileWatcher = new FileSystemWatcher(Directory.GetCurrentDirectory())
             {
-                PACFileWatcher.Dispose();
-            }
-            PACFileWatcher = new FileSystemWatcher(Directory.GetCurrentDirectory());
-            PACFileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
-            PACFileWatcher.Filter = PAC_FILE;
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                Filter = PAC_FILE
+            };
             PACFileWatcher.Changed += PACFileWatcher_Changed;
             PACFileWatcher.Created += PACFileWatcher_Changed;
             PACFileWatcher.Deleted += PACFileWatcher_Changed;
@@ -227,14 +243,13 @@ namespace Fuckshadows.Controller
 
         private void WatchUserRuleFile()
         {
-            if (UserRuleFileWatcher != null)
+            UserRuleFileWatcher?.Dispose();
+            UserRuleFileWatcher = new FileSystemWatcher(Directory.GetCurrentDirectory())
             {
-                UserRuleFileWatcher.Dispose();
-            }
-            UserRuleFileWatcher = new FileSystemWatcher(Directory.GetCurrentDirectory());
-            UserRuleFileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName |
-                                               NotifyFilters.DirectoryName;
-            UserRuleFileWatcher.Filter = USER_RULE_FILE;
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName |
+                               NotifyFilters.DirectoryName,
+                Filter = USER_RULE_FILE
+            };
             UserRuleFileWatcher.Changed += UserRuleFileWatcher_Changed;
             UserRuleFileWatcher.Created += UserRuleFileWatcher_Changed;
             UserRuleFileWatcher.Deleted += UserRuleFileWatcher_Changed;

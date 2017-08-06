@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 using Fuckshadows.Model;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
@@ -20,7 +21,7 @@ namespace Fuckshadows.Controller
 
         public class ResultEventArgs : EventArgs
         {
-            public bool Success;
+            public readonly bool Success;
 
             public ResultEventArgs(bool success)
             {
@@ -29,12 +30,14 @@ namespace Fuckshadows.Controller
         }
 
         private static readonly IEnumerable<char> IgnoredLineBegins = new[] { '!', '[' };
-        private void http_DownloadStringCompleted(object sender, DownloadStringCompletedEventArgs e)
+
+        public async Task UpdatePACFromGFWList(Configuration config)
         {
             try
             {
-                File.WriteAllText(Utils.GetTempPath("gfwlist.txt"), e.Result, Encoding.UTF8);
-                List<string> lines = ParseResult(e.Result);
+                var result = await WebClientDownloadStringTaskAsync(config);
+                File.WriteAllText(Utils.GetTempPath("gfwlist.txt"), result, Encoding.UTF8);
+                List<string> lines = ParseResult(result);
                 if (File.Exists(PACServer.USER_RULE_FILE))
                 {
                     string local = FileManager.NonExclusiveReadAllText(PACServer.USER_RULE_FILE, Encoding.UTF8);
@@ -48,46 +51,44 @@ namespace Fuckshadows.Controller
                         }
                     }
                 }
-                string abpContent;
-                if (File.Exists(PACServer.USER_ABP_FILE))
-                {
-                    abpContent = FileManager.NonExclusiveReadAllText(PACServer.USER_ABP_FILE, Encoding.UTF8);
-                }
-                else
-                {
-                    abpContent = Utils.UnGzip(Resources.abp_js);
-                }
+                string abpContent = File.Exists(PACServer.USER_ABP_FILE)
+                    ? FileManager.NonExclusiveReadAllText(PACServer.USER_ABP_FILE, Encoding.UTF8)
+                    : Utils.UnGzip(Resources.abp_js);
                 abpContent = abpContent.Replace("__RULES__", JsonConvert.SerializeObject(lines, Formatting.Indented));
                 if (File.Exists(PACServer.PAC_FILE))
                 {
                     string original = FileManager.NonExclusiveReadAllText(PACServer.PAC_FILE, Encoding.UTF8);
                     if (original == abpContent)
                     {
-                        UpdateCompleted(this, new ResultEventArgs(false));
+                        UpdateCompleted?.Invoke(this, new ResultEventArgs(false));
                         return;
                     }
                 }
                 File.WriteAllText(PACServer.PAC_FILE, abpContent, Encoding.UTF8);
-                if (UpdateCompleted != null)
-                {
-                    UpdateCompleted(this, new ResultEventArgs(true));
-                }
+                UpdateCompleted?.Invoke(this, new ResultEventArgs(true));
             }
             catch (Exception ex)
             {
-                if (Error != null)
-                {
-                    Error(this, new ErrorEventArgs(ex));
-                }
+                Error?.Invoke(this, new ErrorEventArgs(ex));
             }
         }
 
-        public void UpdatePACFromGFWList(Configuration config)
+        private static Task<string> WebClientDownloadStringTaskAsync(Configuration config)
         {
-            WebClient http = new WebClient();
-            http.Proxy = new WebProxy(IPAddress.Loopback.ToString(), config.localPort);
-            http.DownloadStringCompleted += http_DownloadStringCompleted;
-            http.DownloadStringAsync(new Uri(GFWLIST_URL));
+            var tcs = new TaskCompletionSource<string>();
+            var wc = new WebClient();
+            wc.DownloadStringCompleted += (s, e) =>
+            {
+                if (e.Error != null)
+                    tcs.TrySetException(e.Error);
+                else if (e.Cancelled)
+                    tcs.TrySetCanceled();
+                else
+                    tcs.TrySetResult(e.Result);
+            };
+            wc.Proxy = new WebProxy(IPAddress.Loopback.ToString(), config.localPort);
+            wc.DownloadStringAsync(new Uri(GFWLIST_URL));
+            return tcs.Task;
         }
 
         public static List<string> ParseResult(string response)

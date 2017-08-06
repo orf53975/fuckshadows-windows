@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.ServiceModel.Channels;
-using System.Timers;
+using System.Threading;
+using System.Threading.Tasks;
 using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
 using Fuckshadows.Encryption.AEAD;
@@ -12,7 +13,6 @@ using Fuckshadows.Encryption.Exception;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 using static Fuckshadows.Encryption.EncryptorBase;
-using Timer = System.Timers.Timer;
 
 namespace Fuckshadows.Controller
 {
@@ -21,16 +21,33 @@ namespace Fuckshadows.Controller
         private FuckshadowsController _controller;
         private DateTime _lastSweepTime;
         private Configuration _config;
-
-        public ISet<TCPHandler> Handlers { get; set; }
-        public BufferManager _bm;
+        public SaeaAwaitablePool _argsPool;
+        public ISet<TCPHandler> Handlers { get; private set; }
         public const int MAX_HANDLER_NUM = 8192;
 
-        // each recv size.
-        public const int RecvSize = 2048;
+        public const int CMD_CONNECT = 0x01;
+        public const int CMD_UDP_ASSOC = 0x03;
 
-        // In general, the ciphertext length, we should take overhead into account
-        public const int BufferSize = RecvSize + (int)AEADEncryptor.MaxChunkSize + 32 /* max salt len */;
+        public static readonly byte[] Sock5HandshakeResponseReject = {0, 0x5B /* other bytes are ignored */};
+
+        //+----+--------+
+        //|VER | METHOD |
+        //+----+--------+
+        //| 1  |   1    |
+        //+----+--------+
+        public static readonly byte[] Sock5HandshakeResponseSuccess = {5, 0 /* no auth required */};
+
+        //+----+-----+-------+------+----------+----------+
+        //|VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+        //+----+-----+-------+------+----------+----------+
+        //| 1  |  1  | X'00' |  1   | Variable |    2     |
+        //+----+-----+-------+------+----------+----------+
+        public static readonly byte[] Sock5ConnectRequestReplySuccess = {5, 0, 0, ATYP_IPv4, 0, 0, 0, 0, 0, 0};
+
+        // IMPORTANT: choose RecvSize and BufferSize carefully, make sure AEAD and stream ciphers both work well
+        public const int RecvSize = 4096;
+
+        public const int BufferSize = RecvSize + (int) AEADEncryptor.MaxChunkSize + 32 /* max salt len */;
 
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {
@@ -38,12 +55,15 @@ namespace Fuckshadows.Controller
             _config = conf;
             Handlers = new HashSet<TCPHandler>();
             _lastSweepTime = DateTime.Now;
-            _bm = BufferManager.CreateBufferManager((BufferSize + 2) * MAX_HANDLER_NUM,
-                BufferSize + 2);
+            InitArgsPool();
         }
 
-        public override bool Handle(byte[] firstPacket, int length, Socket socket, object state)
+        public override bool Handle(ServiceUserToken obj)
         {
+            byte[] firstPacket = obj.firstPacket;
+            int length = obj.firstPacketLength;
+            Socket socket = obj.socket;
+            if (socket == null) return false;
             if (socket.ProtocolType != ProtocolType.Tcp
                 || (length < 2 || firstPacket[0] != 5))
                 return false;
@@ -82,6 +102,16 @@ namespace Fuckshadows.Controller
             return true;
         }
 
+        private void InitArgsPool()
+        {
+            _argsPool = new SaeaAwaitablePool();
+            _argsPool.SetInitPoolSize(256);
+            _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
+            _argsPool.SetEachBufSize(BufferSize);
+            _argsPool.SetNumOfOpsToPreAlloc(4);
+            _argsPool.FinishConfig();
+        }
+
         public override void Stop()
         {
             List<TCPHandler> handlersToClose = new List<TCPHandler>();
@@ -91,7 +121,7 @@ namespace Fuckshadows.Controller
             }
             handlersToClose.ForEach(h => h.Close());
 
-            _bm.Clear();
+            _argsPool.Dispose();
         }
 
         public void UpdateInboundCounter(Server server, long n)
@@ -104,6 +134,11 @@ namespace Fuckshadows.Controller
             _controller.UpdateOutboundCounter(server, n);
         }
 
+        public void UpdateLatency(Server server, TimeSpan latency)
+        {
+            _controller.UpdateLatency(server, latency);
+        }
+
         public void IncrementTCPConnectionCounter()
         {
             _controller.IncrementTCPConnectionCounter();
@@ -113,222 +148,168 @@ namespace Fuckshadows.Controller
         {
             _controller.DecrementTCPConnectionCounter();
         }
-
-        public void UpdateLatency(Server server, TimeSpan latency)
-        {
-            _controller.UpdateLatency(server, latency);
-        }
     }
 
     internal class TCPHandler
     {
-        private readonly int _serverTimeout;
-
-        private readonly BufferManager _bm;
-
-        public static readonly byte[] Sock5HandshakeResponseReject = { 0, 0x5B /* other bytes are ignored */};
-
-        //+----+--------+
-        //|VER | METHOD |
-        //+----+--------+
-        //| 1  |   1    |
-        //+----+--------+
-        public static readonly byte[] Sock5HandshakeResponseSuccess = { 5, 0 /* no auth required */};
-
-        //+----+-----+-------+------+----------+----------+
-        //|VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
-        //+----+-----+-------+------+----------+----------+
-        //| 1  |  1  | X'00' |  1   | Variable |    2     |
-        //+----+-----+-------+------+----------+----------+
-        public static readonly byte[] Sock5ConnectRequestReplySuccess = { 5, 0, 0, ATYP_IPv4, 0, 0, 0, 0, 0, 0 };
-
         public DateTime lastActivity;
 
+        private SaeaAwaitablePool _argsPool;
         private FuckshadowsController _controller;
         private Configuration _config;
         private TCPRelay _tcprelay;
-        private Socket _connection;
-        private Socket _remote;
+        private Socket _localSocket;
+        private Socket _serverSocket;
 
         private IEncryptor _encryptor;
         private Server _server;
 
-        private bool _destConnected;
-
         private byte[] _firstPacket;
         private int _firstPacketLength;
 
-        private const int CMD_CONNECT = 0x01;
-        private const int CMD_UDP_ASSOC = 0x03;
+        private byte[] _remainingBytes;
+        private int _remainingBytesLen;
 
-        // <real-addr-buf>[<additional-data>]
         private byte[] _addrBuf;
-
-        // the real addr buffer length
         private int _addrBufLength = -1;
 
-        private string dstAddr = "Unknown";
-        private int dstPort = -1;
+        // flags indicating client or remote shutdown socket
+        private bool _localShutdown = false;
 
-        private int _totalRead = 0;
-        private int _totalWrite = 0;
-
-        // remote -> local proxy (ciphertext, before decrypt)
-        private byte[] _remoteRecvBuffer;
-
-        // client -> local proxy (plaintext, before encrypt)
-        private byte[] _connetionRecvBuffer;
-
-        // local proxy -> remote (plaintext, after decrypt)
-        private byte[] _remoteSendBuffer;
-
-        // local proxy -> client (ciphertext, before decrypt)
-        private byte[] _connetionSendBuffer;
-
-        private bool _connectionShutdown = false;
         private bool _remoteShutdown = false;
-        private bool _closed = false;
 
         // instance-based lock without static
         private readonly object _encryptionLock = new object();
 
         private readonly object _decryptionLock = new object();
-        private readonly object _closeConnLock = new object();
 
         private DateTime _startConnectTime;
         private DateTime _startReceivingTime;
         private DateTime _startSendingTime;
 
+        // parsed addr buf
         private EndPoint _destEndPoint = null;
+
+        private int _state = _none;
+        private const int _none = 0;
+        private const int _running = 1;
+        private const int _disposed = 5;
+
+        public bool IsRunning => _state == _running;
 
         public TCPHandler(FuckshadowsController controller, Configuration config, TCPRelay tcprelay, Socket socket)
         {
             _controller = controller;
             _config = config;
             _tcprelay = tcprelay;
-            _connection = socket;
-            _serverTimeout = config.GetCurrentServer().timeout * 1000;
-
-            this._bm = tcprelay._bm;
+            _localSocket = socket;
+            _argsPool = tcprelay._argsPool;
 
             lastActivity = DateTime.Now;
         }
 
-        public void CreateRemote()
-        {
-            Server server = _controller.GetAServer(IStrategyCallerType.TCP, (IPEndPoint) _connection.RemoteEndPoint,
-                _destEndPoint);
-            if (server == null || server.server == "")
-                throw new ArgumentException("No server configured");
-
-            _encryptor = EncryptorFactory.GetEncryptor(server.method, server.password);
-
-            this._server = server;
-
-            /* prepare address buffer length for AEAD */
-            Logging.Debug($"_addrBufLength={_addrBufLength}");
-            _encryptor.AddrBufLength = _addrBufLength;
-        }
 
         public void Start(byte[] firstPacket, int length)
         {
+            Interlocked.Exchange(ref _state, _running);
             _firstPacket = firstPacket;
             _firstPacketLength = length;
-
-            _remoteRecvBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
-            _remoteSendBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
-            _connetionRecvBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
-            _connetionSendBuffer = _bm.TakeBuffer(TCPRelay.BufferSize);
-
-            HandshakeReceive();
+            Task.Factory.StartNew(async () => { await HandshakeSendResponse(); }).Forget();
         }
 
-        private void HandshakeReceive()
+        private async Task HandshakeSendResponse()
         {
-            if (_closed) return;
+            SaeaAwaitable tcpSaea = null;
             try
             {
-                int bytesRead = _firstPacketLength;
-                if (bytesRead > 1)
+                if (_firstPacketLength <= 1)
                 {
-                    byte[] response = Sock5HandshakeResponseSuccess;
-                    if (_firstPacket[0] != 5)
-                    {
-                        // reject socks 4
-                        response = Sock5HandshakeResponseReject;
-                        Logging.Error("socks 5 protocol error");
-                    }
-                    _connection.BeginSend(response, 0, response.Length, SocketFlags.None,
-                        HandshakeSendCallback, null);
-                }
-                else
+                    Logging.Debug("Invalid first packet length");
                     Close();
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-                Close();
-            }
-        }
-
-        private void HandshakeSendCallback(IAsyncResult ar)
-        {
-            if (_closed) return;
-            try
-            {
-                _connection.EndSend(ar);
-
-                // +-----+-----+-------+------+----------+----------+
-                // | VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-                // +-----+-----+-------+------+----------+----------+
-                // |  1  |  1  | X'00' |  1   | Variable |    2     |
-                // +-----+-----+-------+------+----------+----------+
-                _connection.BeginReceive(_connetionRecvBuffer, 0,
-                                         TCPRelay.RecvSize, SocketFlags.None,
-                    HandshakeReceive2Callback, null);
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-                Close();
-            }
-        }
-
-        private void HandshakeReceive2Callback(IAsyncResult ar)
-        {
-            if (_closed) return;
-            try
-            {
-                int bytesRead = _connection.EndReceive(ar);
-                if (bytesRead >= 5)
+                    return;
+                }
+                byte[] response = TCPRelay.Sock5HandshakeResponseSuccess;
+                if (_firstPacket[0] != 5)
                 {
-                    var _command = _connetionRecvBuffer[1];
-                    if (_command != CMD_CONNECT && _command != CMD_UDP_ASSOC)
+                    // reject socks 4
+                    response = TCPRelay.Sock5HandshakeResponseReject;
+                    Logging.Error("socks 5 protocol error");
+                }
+
+                tcpSaea = _argsPool.Rent();
+                tcpSaea.PrepareSAEABuffer(response, response.Length);
+                var token = await _localSocket.FullSendTaskAsync(tcpSaea, response.Length);
+                var err = token.SocketError;
+                var bytesSent = token.BytesTotalTransferred;
+                Logging.Debug($"HandshakeSendResponse: {err},{bytesSent}");
+                if (err != SocketError.Success)
+                {
+                    Close();
+                    return;
+                }
+                Debug.Assert(bytesSent == response.Length);
+                Task.Factory.StartNew(async () => { await Sock5RequestRecv(); }).Forget();
+            }
+            catch (Exception e)
+            {
+                Logging.LogUsefulException(e);
+                Close();
+            }
+            finally
+            {
+                _argsPool.Return(ref tcpSaea);
+            }
+        }
+
+        private async Task Sock5RequestRecv()
+        {
+            SaeaAwaitable tcpSaea = null;
+            try
+            {
+                tcpSaea = _argsPool.Rent();
+                var token = await _localSocket.FullReceiveTaskAsync(tcpSaea, TCPRelay.RecvSize);
+                var err = token.SocketError;
+                var recvSize = token.BytesTotalTransferred;
+                Logging.Debug($"Sock5RequestRecv: {err},{recvSize}");
+                if (err != SocketError.Success)
+                {
+                    Close();
+                    return;
+                }
+
+                var recvBuf = tcpSaea.Saea.Buffer;
+                if (recvSize >= 5)
+                {
+                    byte _command = recvBuf[1];
+                    if (_command != TCPRelay.CMD_CONNECT && _command != TCPRelay.CMD_UDP_ASSOC)
                     {
                         Logging.Debug("Unsupported CMD=" + _command);
                         Close();
+                        return;
                     }
-                    else
-                    {
-                        ParseAddrBuf(_connetionRecvBuffer, bytesRead);
 
-                        if (_command == CMD_CONNECT)
-                        {
-                            _connection.BeginSend(Sock5ConnectRequestReplySuccess, 0,
-                                Sock5ConnectRequestReplySuccess.Length, SocketFlags.None,
-                                ResponseCallback, null);
-                        }
-                        else if (_command == CMD_UDP_ASSOC)
-                        {
-                            HandleUDPAssociate();
-                        }
+
+                    ParseAddrBuf(recvBuf, recvSize);
+
+                    /* drop [ VER | CMD | RSV ] */
+                    var totalTransferredWithoutLeading = recvSize - 3;
+                    // save remaing
+                    _remainingBytesLen = totalTransferredWithoutLeading - _addrBufLength;
+                    if (_remainingBytesLen > 0)
+                    {
+                        _remainingBytes = new byte[_remainingBytesLen];
+                        Buffer.BlockCopy(recvBuf, _addrBufLength, _remainingBytes, 0, _remainingBytesLen);
                     }
-                }
-                else
-                {
-                    Logging.Debug(
-                        "failed to recv data in Shadowsocks.Controller.TCPHandler.handshakeReceive2Callback()");
-                    Close();
+
+                    // read address and call the corresponding method
+                    if (_command == TCPRelay.CMD_CONNECT)
+                    {
+                        Task.Factory.StartNew(async () => { await Sock5ConnectResponseSend(); }).Forget();
+                    }
+                    else if (_command == TCPRelay.CMD_UDP_ASSOC)
+                    {
+                        Task.Factory.StartNew(async () => { await HandleUDPAssociate(); }).Forget();
+                    }
                 }
             }
             catch (Exception e)
@@ -336,16 +317,57 @@ namespace Fuckshadows.Controller
                 Logging.LogUsefulException(e);
                 Close();
             }
+            finally
+            {
+                _argsPool.Return(ref tcpSaea);
+            }
         }
 
-        private void ParseAddrBuf(byte[] buf, int length)
+        private async Task Sock5ConnectResponseSend()
         {
+            SaeaAwaitable tcpSaea = null;
+            try
+            {
+                tcpSaea = _argsPool.Rent();
+                tcpSaea.PrepareSAEABuffer(TCPRelay.Sock5ConnectRequestReplySuccess,
+                    TCPRelay.Sock5ConnectRequestReplySuccess.Length);
+                var token = await _localSocket.FullSendTaskAsync(tcpSaea,
+                    TCPRelay.Sock5ConnectRequestReplySuccess.Length);
+                var err = token.SocketError;
+                var bytesSent = token.BytesTotalTransferred;
+                Logging.Debug($"Sock5ConnectResponseSend: {err},{bytesSent}");
+                if (err != SocketError.Success)
+                {
+                    Close();
+                    return;
+                }
+                Debug.Assert(bytesSent == TCPRelay.Sock5ConnectRequestReplySuccess.Length);
+                Task.Factory.StartNew(async () => { await StartConnect(); }).Forget();
+            }
+            catch (Exception e)
+            {
+                Logging.LogUsefulException(e);
+                Close();
+            }
+            finally
+            {
+                _argsPool.Return(ref tcpSaea);
+            }
+        }
+
+        private void ParseAddrBuf(byte[] buf, int bufLen)
+        {
+            // +-----+-----+-------+------+----------+----------+
+            // | VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+            // +-----+-----+-------+------+----------+----------+
+            // |  1  |  1  | X'00' |  1   | Variable |    2     |
+            // +-----+-----+-------+------+----------+----------+
             Logging.Debug("enter ParseAddrBuf");
-            _addrBuf = buf.Skip(3).Take(length - 3).ToArray();
-            Logging.Dump("recvBuf", buf, length);
+            _addrBuf = buf.Skip(3).Take(bufLen - 3).ToArray();
             Logging.Dump(nameof(_addrBuf), _addrBuf, _addrBuf.Length);
             int atyp = _addrBuf[0];
-            
+            string dstAddr = "Unknown";
+            int dstPort = -1;
             switch (atyp)
             {
                 case ATYP_IPv4: // IPv4 address, 4 bytes
@@ -369,33 +391,17 @@ namespace Fuckshadows.Controller
                     break;
             }
             Logging.Debug(nameof(_addrBufLength) + " " + _addrBufLength);
-
             _destEndPoint = SocketUtil.GetEndPoint(dstAddr, dstPort);
 
             if (_config.isVerboseLogging)
             {
-                Logging.Info($"connect to {dstAddr}:{dstPort}");
+                Logging.Info($"AddrBuf: connect to {dstAddr}:{dstPort}");
             }
         }
 
-        private void ResponseCallback(IAsyncResult ar)
+        private async Task HandleUDPAssociate()
         {
-            try
-            {
-                _connection.EndSend(ar);
-
-                StartConnect();
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-                Close();
-            }
-        }
-
-        private void HandleUDPAssociate()
-        {
-            IPEndPoint endPoint = (IPEndPoint) _connection.LocalEndPoint;
+            IPEndPoint endPoint = (IPEndPoint) _localSocket.LocalEndPoint;
             byte[] address = endPoint.Address.GetAddressBytes();
             int port = endPoint.Port;
             byte[] response = new byte[4 + address.Length + ADDR_PORT_LEN];
@@ -409,35 +415,37 @@ namespace Fuckshadows.Controller
                     response[3] = ATYP_IPv6;
                     break;
             }
-            address.CopyTo(response, 4);
+            Array.Copy(address, 0, response, 4, address.Length);
             response[response.Length - 1] = (byte) (port & 0xFF);
             response[response.Length - 2] = (byte) ((port >> 8) & 0xFF);
-            _connection.BeginSend(response, 0, response.Length, SocketFlags.None, ReadAll, true);
-        }
 
-        private void ReadAll(IAsyncResult ar)
-        {
-            if (_closed) return;
+            SaeaAwaitable tcpSaea = null;
+            SaeaAwaitable circularRecvSaea = null;
             try
             {
-                if (ar.AsyncState != null)
+                tcpSaea = _argsPool.Rent();
+                tcpSaea.PrepareSAEABuffer(response, response.Length);
+                var token = await _localSocket.FullSendTaskAsync(tcpSaea, response.Length);
+                var err = token.SocketError;
+                var sentSize = token.BytesTotalTransferred;
+                Logging.Debug($"Udp assoc local send: {err},{sentSize}");
+                if (err != SocketError.Success)
                 {
-                    _connection.EndSend(ar);
-                    _connection.BeginReceive(_connetionRecvBuffer, 0,
-                                             TCPRelay.RecvSize, SocketFlags.None,
-                        ReadAll, null);
+                    Close();
+                    return;
                 }
-                else
+                Debug.Assert(sentSize == response.Length);
+                _argsPool.Return(ref tcpSaea);
+                circularRecvSaea = _argsPool.Rent();
+
+                while (IsRunning)
                 {
-                    int bytesRead = _connection.EndReceive(ar);
-                    if (bytesRead > 0)
-                    {
-                        _connection.BeginReceive(_connetionRecvBuffer, 0,
-                                                 TCPRelay.RecvSize, SocketFlags.None,
-                            ReadAll, null);
-                    }
-                    else
-                        Close();
+                    // UDP Assoc: Read all from socket and wait until client closes the connection
+                    token = await _localSocket.FullReceiveTaskAsync(circularRecvSaea, TCPRelay.RecvSize);
+                    Logging.Debug($"udp assoc local recv: {err}");
+                    var ret = token.SocketError;
+                    if (ret != SocketError.Success) return;
+                    circularRecvSaea.ClearAndResetSaeaProperties();
                 }
             }
             catch (Exception e)
@@ -445,372 +453,349 @@ namespace Fuckshadows.Controller
                 Logging.LogUsefulException(e);
                 Close();
             }
-        }
-
-        // inner class
-        private class ServerTimer : Timer
-        {
-            public Server Server;
-
-            public SocketAsyncEventArgs Args;
-
-            public ServerTimer(int p) : base(p)
+            finally
             {
+                _argsPool.Return(ref tcpSaea);
+                _argsPool.Return(ref circularRecvSaea);
             }
         }
 
-        private void StartConnect()
+        private void CreateRemote()
         {
+            Server server = _controller.GetAServer(IStrategyCallerType.TCP,
+                (IPEndPoint) _localSocket.RemoteEndPoint,
+                _destEndPoint);
+            if (server == null || server.server == "")
+                throw new ArgumentException("No server configured");
+
+            _encryptor = EncryptorFactory.GetEncryptor(server.method, server.password);
+
+            _server = server;
+
+            /* prepare address buffer length for AEAD */
+            Logging.Debug($"_addrBufLength={_addrBufLength}");
+            _encryptor.AddrBufLength = _addrBufLength;
+        }
+
+        private async Task StartConnect()
+        {
+            SaeaAwaitable serverSaea = null;
             try
             {
                 CreateRemote();
 
-                // let SAEA's RemoteEndPoint determine the AddressFamily
-                _remote = new Socket(SocketType.Stream, ProtocolType.Tcp);
-                _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
-                _remote.SetTFO();
+                _serverSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                _serverSocket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
+                _serverSocket.SetTFO();
 
-                lock (_closeConnLock)
+                // encrypt and attach encrypted buffer to ConnectAsync
+                serverSaea = _argsPool.Rent();
+                var realSaea = serverSaea.Saea;
+
+                var encryptedbufLen = -1;
+                Logging.Dump("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
+                DoEncrypt(_addrBuf, _addrBufLength, realSaea.Buffer, out encryptedbufLen);
+                Logging.Debug("StartConnect(): addrBuf enc len " + encryptedbufLen);
+                if (_remainingBytesLen > 0)
                 {
-                    if (_closed)
-                    {
-                        _remote.Close();
-                        return;
-                    }
+                    Logging.Debug($"StartConnect(): remainingBytesLen: {_remainingBytesLen}");
+                    var encRemainingBufLen = -1;
+                    byte[] tmp = new byte[4096];
+                    Logging.Dump("StartConnect(): enc remaining", _remainingBytes, _remainingBytesLen);
+                    DoEncrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
+                    Logging.Debug("StartConnect(): remaining enc len " + encRemainingBufLen);
+                    Buffer.BlockCopy(tmp, 0, realSaea.Buffer, encryptedbufLen, encRemainingBufLen);
+                    encryptedbufLen += encRemainingBufLen;
                 }
+                Logging.Debug("actual enc buf len " + encryptedbufLen);
+                realSaea.RemoteEndPoint = SocketUtil.GetEndPoint(_server.server, _server.server_port);
+                realSaea.SetBuffer(0, encryptedbufLen);
 
-                var encBytesLen = -1;
-                var encBuf = new byte[TCPRelay.BufferSize];
-                // encrypt addr buf
-                lock (_encryptionLock)
-                {
-                    try
-                    {
-                        _encryptor.Encrypt(_addrBuf, _addrBuf.Length, encBuf, out encBytesLen);
-                    }
-                    catch (CryptoErrorException)
-                    {
-                        Logging.Debug("encryption error");
-                        throw;
-                    }
-                }
-
-                // Connect to the proxy server.
                 _startConnectTime = DateTime.Now;
-                ServerTimer connectTimer = new ServerTimer(_serverTimeout) { AutoReset = false };
-                connectTimer.Elapsed += DestConnectTimer_Elapsed;
-                connectTimer.Enabled = true;
-
-                var args = new SocketAsyncEventArgs();
-                args.RemoteEndPoint = SocketUtil.GetEndPoint(_server.server, _server.server_port);
-                args.Completed += ConnectCallback;
-                args.UserToken = connectTimer;
-                args.SetBuffer(encBuf, 0, encBytesLen);
-
-                connectTimer.Args = args;
-                connectTimer.Server = _server;
-
-
-                _destConnected = false;
-                // Connect to the remote endpoint.
-
-                if (!_remote.ConnectAsync(args))
+                var err = await _serverSocket.ConnectAsync(serverSaea);
+                if (err != SocketError.Success)
                 {
-                    ConnectCallback(_remote, args);
+                    Logging.Error($"StartConnect: {err}");
+                    Close();
+                    return;
                 }
+                Logging.Debug("remote connected");
+                if (serverSaea.Saea.BytesTransferred != encryptedbufLen)
+                {
+                    // not sent all data, it may caused by TFO, disable it
+                    Logging.Info("Disable TCP Fast Open due to initial send failure");
+                    Program.DisableTFO();
+                    Close();
+                    return;
+                }
+
+                if (_config.isVerboseLogging)
+                {
+                    Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
+                }
+
+                var latency = DateTime.Now - _startConnectTime;
+                _controller.GetCurrentStrategy()?.UpdateLatency(_server, latency);
+                _tcprelay.UpdateLatency(_server, latency);
+
+                _startReceivingTime = DateTime.Now;
+
+                Task.Factory.StartNew(StartPipe, TaskCreationOptions.PreferFairness).Forget();
+            }
+            catch (AggregateException agex)
+            {
+                foreach (var ex in agex.InnerExceptions)
+                {
+                    Logging.LogUsefulException(ex);
+                }
+                Close();
             }
             catch (Exception e)
             {
                 Logging.LogUsefulException(e);
                 Close();
             }
-        }
-
-        private void DestConnectTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            
-            var timer = (ServerTimer) sender;
-            var args = timer.Args;
-            args.Completed -= ConnectCallback;
-            args.Dispose();
-            timer.Elapsed -= DestConnectTimer_Elapsed;
-            timer.Enabled = false;
-            timer.Dispose();
-
-            if (_destConnected || _closed)
+            finally
             {
-                return;
-            }
-
-            Server server = timer.Server;
-            IStrategy strategy = _controller.GetCurrentStrategy();
-            strategy?.SetFailure(server);
-            Logging.Info($"{server.FriendlyName()} timed out");
-            Close();
-        }
-
-        private void ConnectCallback(object sender, SocketAsyncEventArgs e)
-        {
-            using (e)
-            {
-                if (_closed) return;
-                try
-                {
-                    if (e.SocketError != SocketError.Success)
-                    {
-                        Logging.LogUsefulException(new Exception(e.SocketError.ToString()));
-                        Close();
-                        return;
-                    }
-
-                    if (e.BytesTransferred <= 0)
-                    {
-                        // close
-                        Close();
-                        return;
-                    }
-
-                    if (e.BytesTransferred != e.Count) {
-                        // not sent all data, it may caused by TFO, disable it
-                        Logging.Info("Disable TCP Fast Open due to initial send failure");
-                        Program.DisableTFO();
-                        Close();
-                        return;
-                    }
-
-                    ServerTimer timer = (ServerTimer)e.UserToken;
-                    timer.Enabled = false;
-                    timer.Elapsed -= DestConnectTimer_Elapsed;
-                    timer.Dispose();
-
-                    _destConnected = true;
-
-                    if (_config.isVerboseLogging)
-                    {
-                        Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
-                    }
-
-                    var latency = DateTime.Now - _startConnectTime;
-                    IStrategy strategy = _controller.GetCurrentStrategy();
-                    strategy?.UpdateLatency(_server, latency);
-                    _tcprelay.UpdateLatency(_server, latency);
-
-                    StartPipe();
-                }
-                catch (Exception ex)
-                {
-                    if (_server != null)
-                    {
-                        IStrategy strategy = _controller.GetCurrentStrategy();
-                        strategy?.SetFailure(_server);
-                    }
-                    Logging.LogUsefulException(ex);
-                    Close();
-                }
+                _argsPool.Return(ref serverSaea);
             }
         }
 
         private void StartPipe()
         {
-            if (_closed) return;
-            try
-            {
-                _startReceivingTime = DateTime.Now;
-                _remote.BeginReceive(_remoteRecvBuffer, 0,
-                                     TCPRelay.RecvSize, SocketFlags.None,
-                    PipeRemoteReceiveCallback, null);
-
-                _connection.BeginReceive(_connetionRecvBuffer, 0,
-                                         TCPRelay.RecvSize, SocketFlags.None,
-                    PipeConnectionReceiveCallback, null);
-            }
-            catch (Exception e)
-            {
-                Logging.LogUsefulException(e);
-                Close();
-            }
+            Task.Factory.StartNew(async () => { await Upstream(); }, TaskCreationOptions.AttachedToParent);
+            Task.Factory.StartNew(async () => { await Downstream(); }, TaskCreationOptions.AttachedToParent);
         }
 
-        private void PipeRemoteReceiveCallback(IAsyncResult ar)
+        // server recv -> local send
+        private async Task Downstream()
         {
-            if (_closed) return;
+            SaeaAwaitable serverRecvSaea = null;
+            SaeaAwaitable localSendSaea = null;
             try
             {
-                int bytesRead = _remote.EndReceive(ar);
-                _totalRead += bytesRead;
-                _tcprelay.UpdateInboundCounter(_server, bytesRead);
-                if (bytesRead > 0)
+                while (IsRunning)
                 {
-                    lastActivity = DateTime.Now;
-                    int bytesToSend = -1;
-                    lock (_decryptionLock)
+                    serverRecvSaea = _argsPool.Rent();
+                    var token = await _serverSocket.FullReceiveTaskAsync(serverRecvSaea, TCPRelay.RecvSize);
+                    var err = token.SocketError;
+                    var bytesRecved = token.BytesTotalTransferred;
+                    Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
+
+                    if (IsShutdown(token))
                     {
-                        try
-                        {
-                            _encryptor.Decrypt(_remoteRecvBuffer, bytesRead, _remoteSendBuffer, out bytesToSend);
-                        }
-                        catch (CryptoErrorException e)
-                        {
-                            Logging.LogUsefulException(e);
-                            Close();
-                            return;
-                        }
-                    }
-                    if (bytesToSend == 0)
-                    {
-                        // need more to decrypt
-                        Logging.Debug("Need more to decrypt");
-                        _remote.BeginReceive(_remoteRecvBuffer, 0,
-                                             TCPRelay.RecvSize, SocketFlags.None,
-                            PipeRemoteReceiveCallback, null);
+                        //lock (_closeConnLock)
+                        //{
+                        _localSocket.Shutdown(SocketShutdown.Send);
+                        _localShutdown = true;
+                        CheckClose();
+                        //}
                         return;
                     }
-                    Logging.Debug($"start sending {bytesToSend}");
-                    _connection.BeginSend(_remoteSendBuffer, 0, bytesToSend, SocketFlags.None,
-                        PipeConnectionSendCallback, bytesToSend);
-                    IStrategy strategy = _controller.GetCurrentStrategy();
-                    strategy?.UpdateLastRead(_server);
+                    if (err != SocketError.Success)
+                    {
+                        Logging.Debug($"Downstream server recv socket err: {err}");
+                        Close();
+                        return;
+                    }
+                    Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
+                    _tcprelay.UpdateInboundCounter(_server, bytesRecved);
+                    lastActivity = DateTime.Now;
+
+                    _controller.GetCurrentStrategy()?.UpdateLastRead(_server);
+
+                    localSendSaea = _argsPool.Rent();
+                    int decBufLen = -1;
+                    lock (_decryptionLock)
+                    {
+                        DoDecrypt(serverRecvSaea.Saea.Buffer,
+                            bytesRecved,
+                            localSendSaea.Saea.Buffer,
+                            out decBufLen);
+                    }
+                    _argsPool.Return(ref serverRecvSaea);
+
+                    token = await _localSocket.FullSendTaskAsync(localSendSaea, decBufLen);
+                    err = token.SocketError;
+                    var bytesSent = token.BytesTotalTransferred;
+                    Logging.Debug($"Downstream local send socket err: {err},{bytesSent}");
+                    if (err != SocketError.Success)
+                    {
+                        Close();
+                        return;
+                    }
+                    Debug.Assert(bytesSent == decBufLen);
                 }
-                else
+            }
+            catch (AggregateException agex)
+            {
+                foreach (var ex in agex.InnerExceptions)
                 {
-                    _connection.Shutdown(SocketShutdown.Send);
-                    _connectionShutdown = true;
-                    CheckClose();
+                    Logging.LogUsefulException(ex);
                 }
+                Close();
             }
             catch (Exception e)
             {
                 Logging.LogUsefulException(e);
                 Close();
             }
+            finally
+            {
+                _argsPool.Return(ref serverRecvSaea);
+                _argsPool.Return(ref localSendSaea);
+            }
         }
 
-        private void PipeConnectionReceiveCallback(IAsyncResult ar)
+        // local recv -> server send
+        private async Task Upstream()
         {
-            if (_closed) return;
+            SaeaAwaitable localRecvSaea = null;
+            SaeaAwaitable serverSendSaea = null;
             try
             {
-                int bytesRead = _connection.EndReceive(ar);
+                while (IsRunning)
+                {
+                    localRecvSaea = _argsPool.Rent();
+                    var token = await _localSocket.FullReceiveTaskAsync(localRecvSaea, TCPRelay.RecvSize);
+                    var err = token.SocketError;
+                    var bytesRecved = token.BytesTotalTransferred;
+                    Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
+                    if (IsShutdown(token))
+                    {
+                        //lock (_closeConnLock)
+                        //{
+                        _serverSocket.Shutdown(SocketShutdown.Send);
+                        _remoteShutdown = true;
+                        CheckClose();
+                        //}
+                        return;
+                    }
+                    if (err != SocketError.Success)
+                    {
+                        Logging.Debug($"Upstream local recv socket err: {err}");
+                        Close();
+                        return;
+                    }
+                    Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
 
-                if (bytesRead > 0)
-                {
-                    SendToServer(bytesRead);
+                    _controller.GetCurrentStrategy()?.UpdateLastRead(_server);
+                    serverSendSaea = _argsPool.Rent();
+                    int encBufLen = -1;
+                    lock (_encryptionLock)
+                    {
+                        DoEncrypt(localRecvSaea.Saea.Buffer,
+                            bytesRecved,
+                            serverSendSaea.Saea.Buffer,
+                            out encBufLen);
+                    }
+                    _argsPool.Return(ref localRecvSaea);
+
+                    _startSendingTime = DateTime.Now;
+                    _tcprelay.UpdateOutboundCounter(_server, encBufLen);
+                    _controller.GetCurrentStrategy()?.UpdateLastWrite(_server);
+
+                    token = await _serverSocket.FullSendTaskAsync(serverSendSaea, encBufLen);
+                    err = token.SocketError;
+                    var bytesSent = token.BytesTotalTransferred;
+                    Logging.Debug($"Upstream server send: {err},{bytesSent}");
+                    if (err != SocketError.Success)
+                    {
+                        Close();
+                        return;
+                    }
+                    Debug.Assert(bytesSent == encBufLen);
                 }
-                else
+            }
+            catch (AggregateException agex)
+            {
+                foreach (var ex in agex.InnerExceptions)
                 {
-                    _remote.Shutdown(SocketShutdown.Send);
-                    _remoteShutdown = true;
-                    CheckClose();
+                    Logging.LogUsefulException(ex);
                 }
+                Close();
             }
             catch (Exception e)
             {
                 Logging.LogUsefulException(e);
                 Close();
             }
-        }
-
-        private void SendToServer(int length)
-        {
-            _totalWrite += length;
-            int bytesToSend;
-            lock (_encryptionLock)
+            finally
             {
-                try
-                {
-                    _encryptor.Encrypt(_connetionRecvBuffer, length, _connetionSendBuffer, out bytesToSend);
-                }
-                catch (CryptoErrorException)
-                {
-                    Logging.Debug("encryption error");
-                    Close();
-                    return;
-                }
+                _argsPool.Return(ref localRecvSaea);
+                _argsPool.Return(ref serverSendSaea);
             }
-            _tcprelay.UpdateOutboundCounter(_server, bytesToSend);
-            _startSendingTime = DateTime.Now;
-            _remote.BeginSend(_connetionSendBuffer, 0, bytesToSend, SocketFlags.None,
-                PipeRemoteSendCallback, bytesToSend);
-            IStrategy strategy = _controller.GetCurrentStrategy();
-            strategy?.UpdateLastWrite(_server);
         }
 
-        private void PipeRemoteSendCallback(IAsyncResult ar)
+        private static bool IsShutdown(SocketExtensions.TcpTrafficToken token)
         {
-            if (_closed) return;
+            var err = token.SocketError;
+            var bytesTransferred = token.BytesTotalTransferred;
+            return err == SocketError.Success && bytesTransferred <= 0;
+        }
+
+        #region Enc/Dec Worker
+
+        private void DoEncrypt(byte[] inBuf, int inLen, byte[] outBuf, out int outLen)
+        {
+            int bytesOut = -1;
             try
             {
-
-                var bytesShouldSend = (int) ar.AsyncState;
-                int bytesSent = _remote.EndSend(ar);
-                int bytesRemaining = bytesShouldSend - bytesSent;
-                if (bytesRemaining > 0)
-                {
-                    Logging.Info("reconstruct _connetionSendBuffer to re-send");
-                    Util.Utils.PerfByteCopy(_connetionSendBuffer, bytesSent, _connetionSendBuffer, 0, bytesRemaining);
-                    _remote.BeginSend(_connetionSendBuffer, 0, bytesRemaining, SocketFlags.None,
-                        PipeRemoteSendCallback, bytesRemaining);
-                    return;
-                }
-                _connection.BeginReceive(_connetionRecvBuffer, 0,
-                                         TCPRelay.RecvSize, SocketFlags.None,
-                    PipeConnectionReceiveCallback, null);
+                _encryptor.Encrypt(inBuf, inLen, outBuf, out bytesOut);
             }
-            catch (Exception e)
+            catch (CryptoErrorException)
             {
-                Logging.LogUsefulException(e);
-                Close();
+                Logging.Debug("encryption error");
+                throw;
             }
+            outLen = bytesOut;
         }
 
-        // In general, we assume there is no delay between local proxy and client, add this for sanity
-        private void PipeConnectionSendCallback(IAsyncResult ar)
+        private void DoDecrypt(byte[] inBuf, int inLen, byte[] outBuf, out int outLen)
         {
+            int bytesOut = -1;
             try
             {
-                var bytesShouldSend = (int) ar.AsyncState;
-                var bytesSent = _connection.EndSend(ar);
-                var bytesRemaining = bytesShouldSend - bytesSent;
-                if (bytesRemaining > 0)
-                {
-                    Logging.Info("reconstruct _remoteSendBuffer to re-send");
-                    Util.Utils.PerfByteCopy(_remoteSendBuffer, bytesSent, _remoteSendBuffer, 0, bytesRemaining);
-                    _connection.BeginSend(_remoteSendBuffer, 0, bytesRemaining, SocketFlags.None,
-                        PipeConnectionSendCallback, bytesRemaining);
-                    return;
-                }
-                _remote.BeginReceive(_remoteRecvBuffer, 0,
-                                     TCPRelay.RecvSize, SocketFlags.None,
-                    PipeRemoteReceiveCallback, null);
+                _encryptor.Decrypt(inBuf, inLen, outBuf, out bytesOut);
             }
-            catch (Exception e)
+            catch (CryptoErrorException e)
             {
                 Logging.LogUsefulException(e);
-                Close();
+                throw;
             }
+            outLen = bytesOut;
         }
+
+        #endregion
+
+        #region Close Connection
 
         private void CheckClose()
         {
-            if (_connectionShutdown && _remoteShutdown)
+            if (_localShutdown && _remoteShutdown)
+            {
                 Close();
+            }
         }
 
         public void Close()
         {
-            lock (_closeConnLock)
+            int origin = Interlocked.CompareExchange(ref _state, _disposed, _running);
+            if (origin == _disposed)
             {
-                if (_closed) return;
-                _closed = true;
+                return;
             }
+
             lock (_tcprelay.Handlers)
             {
                 _tcprelay.Handlers.Remove(this);
             }
+            Logging.Debug("Closing local and server socket");
+            Logging.Debug($"_localShutdown: {_localShutdown} _remoteShutdown: {_remoteShutdown}");
             try
             {
-                _connection?.Shutdown(SocketShutdown.Both);
-                _connection?.Close();
+                _localSocket?.Shutdown(SocketShutdown.Both);
+                _localSocket?.Close();
             }
             catch (Exception e)
             {
@@ -819,8 +804,8 @@ namespace Fuckshadows.Controller
 
             try
             {
-                _remote?.Shutdown(SocketShutdown.Both);
-                _remote?.Close();
+                _serverSocket?.Shutdown(SocketShutdown.Both);
+                _serverSocket?.Close();
             }
             catch (Exception e)
             {
@@ -835,12 +820,9 @@ namespace Fuckshadows.Controller
                 }
             }
 
-            _bm.ReturnBuffer(_connetionSendBuffer);
-            _bm.ReturnBuffer(_connetionRecvBuffer);
-            _bm.ReturnBuffer(_remoteRecvBuffer);
-            _bm.ReturnBuffer(_remoteSendBuffer);
-
             _tcprelay.DecrementTCPConnectionCounter();
         }
+
+        #endregion
     }
 }

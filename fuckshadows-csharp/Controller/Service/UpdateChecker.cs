@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Fuckshadows.Model;
 using Fuckshadows.Util;
+using Fuckshadows.Util.Sockets;
 using Newtonsoft.Json.Linq;
 
 namespace Fuckshadows.Controller
@@ -11,7 +13,9 @@ namespace Fuckshadows.Controller
     public class UpdateChecker
     {
         private const string UpdateURL = "https://api.github.com/repos/shadowsocks/shadowsocks-windows/releases";
-        private const string UserAgent = "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36";
+
+        private const string UserAgent =
+            "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36";
 
         private Configuration config;
         public bool NewVersionFound;
@@ -44,36 +48,22 @@ namespace Fuckshadows.Controller
 
         private void Timer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
         {
-            CheckUpdateTimer timer = (CheckUpdateTimer)sender;
+            CheckUpdateTimer timer = (CheckUpdateTimer) sender;
             Configuration config = timer.config;
             timer.Elapsed -= Timer_Elapsed;
             timer.Enabled = false;
             timer.Dispose();
-            CheckUpdate(config);
+            Task.Factory.StartNew(() => CheckUpdate(config));
         }
 
-        public void CheckUpdate(Configuration config)
+        public async Task CheckUpdate(Configuration config)
         {
             this.config = config;
 
+            Logging.Debug("Checking updates...");
             try
             {
-                Logging.Debug("Checking updates...");
-                WebClient http = CreateWebClient();
-                http.DownloadStringCompleted += http_DownloadStringCompleted;
-                http.DownloadStringAsync(new Uri(UpdateURL));
-            }
-            catch (Exception ex)
-            {
-                Logging.LogUsefulException(ex);
-            }
-        }
-
-        private void http_DownloadStringCompleted(object sender, DownloadStringCompletedEventArgs e)
-        {
-            try
-            {
-                string response = e.Result;
+                var response = await WebClientDownloadStringTaskAsync(UpdateURL);
 
                 JArray result = JArray.Parse(response);
 
@@ -87,7 +77,7 @@ namespace Fuckshadows.Controller
                         {
                             continue;
                         }
-                        foreach (JObject asset in (JArray)release["assets"])
+                        foreach (JObject asset in (JArray) release["assets"])
                         {
                             Asset ass = Asset.ParseAsset(asset);
                             if (ass != null)
@@ -111,7 +101,7 @@ namespace Fuckshadows.Controller
                     LatestVersionName = asset.name;
                     LatestVersionSuffix = asset.suffix == null ? "" : $"-{asset.suffix}";
 
-                    startDownload();
+                    Task.Factory.StartNew(async () => { await StartDownload(); }).Forget();
                 }
                 else
                 {
@@ -122,37 +112,55 @@ namespace Fuckshadows.Controller
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                Logging.LogUsefulException(ex);
+                Logging.LogUsefulException(e);
             }
         }
 
-        private void startDownload()
+        private Task<string> WebClientDownloadStringTaskAsync(string url)
         {
-            try
-            {
-                LatestVersionLocalName = Utils.GetTempPath(LatestVersionName);
-                WebClient http = CreateWebClient();
-                http.DownloadFileCompleted += Http_DownloadFileCompleted;
-                http.DownloadFileAsync(new Uri(LatestVersionURL), LatestVersionLocalName);
-            }
-            catch (Exception ex)
-            {
-                Logging.LogUsefulException(ex);
-            }
-        }
-
-        private void Http_DownloadFileCompleted(object sender, System.ComponentModel.AsyncCompletedEventArgs e)
-        {
-            try
+            var tcs = new TaskCompletionSource<string>();
+            var wc = CreateWebClient();
+            wc.DownloadStringCompleted += (s, e) =>
             {
                 if (e.Error != null)
-                {
-                    Logging.LogUsefulException(e.Error);
-                    return;
-                }
-                Logging.Debug($"New version {LatestVersionNumber}{LatestVersionSuffix} found: {LatestVersionLocalName}");
+                    tcs.TrySetException(e.Error);
+                else if (e.Cancelled)
+                    tcs.TrySetCanceled();
+                else
+                    tcs.TrySetResult(e.Result);
+            };
+            wc.DownloadStringAsync(new Uri(url));
+            return tcs.Task;
+        }
+
+        private Task<bool> WebClientDownloadFileTaskAsync()
+        {
+            LatestVersionLocalName = Utils.GetTempPath(LatestVersionName);
+            var tcs = new TaskCompletionSource<bool>();
+            var wc = CreateWebClient();
+            wc.DownloadFileCompleted += (s, e) =>
+            {
+                if (e.Error != null)
+                    tcs.TrySetException(e.Error);
+                else if (e.Cancelled)
+                    tcs.TrySetCanceled();
+                else
+                    tcs.TrySetResult(true);
+            };
+            wc.DownloadFileAsync(new Uri(LatestVersionURL), LatestVersionLocalName);
+            return tcs.Task;
+        }
+
+        private async Task StartDownload()
+        {
+            try
+            {
+                if (!await WebClientDownloadFileTaskAsync()) return;
+
+                Logging.Debug(
+                    $"New version {LatestVersionNumber}{LatestVersionSuffix} found: {LatestVersionLocalName}");
                 if (CheckUpdateCompleted != null)
                 {
                     CheckUpdateCompleted(this, new EventArgs());

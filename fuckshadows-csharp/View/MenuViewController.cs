@@ -11,6 +11,7 @@ using ZXing;
 using ZXing.Common;
 using ZXing.QrCode;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Fuckshadows.View
 {
@@ -870,7 +871,7 @@ namespace Fuckshadows.View
 
         private void checkUpdatesItem_Click(object sender, EventArgs e)
         {
-            updateChecker.CheckUpdate(controller.GetConfigurationCopy());
+            Task.Factory.StartNew(async () => { await updateChecker.CheckUpdate(controller.GetConfigurationCopy()); });
         }
 
         private void hotKeyItem_Click(object sender, EventArgs e)
