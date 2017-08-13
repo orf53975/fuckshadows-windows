@@ -44,7 +44,6 @@ namespace Fuckshadows.Model
             CheckPort(server.server_port);
             CheckPassword(server.password);
             CheckServer(server.server);
-            CheckTimeout(server.timeout, Server.MaxServerTimeoutSec);
         }
 
         public static Configuration Load()
@@ -142,13 +141,6 @@ namespace Fuckshadows.Model
         {
             if (server.IsNullOrEmpty())
                 throw new ArgumentException(I18N.GetString("Server IP can not be blank"));
-        }
-
-        public static void CheckTimeout(int timeout, int maxTimeout)
-        {
-            if (timeout <= 0 || timeout > maxTimeout)
-                throw new ArgumentException(string.Format(
-                    I18N.GetString("Timeout is invalid, it should not exceed {0}"), maxTimeout));
         }
     }
 }

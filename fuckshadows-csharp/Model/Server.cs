@@ -14,15 +14,11 @@ namespace Fuckshadows.Model
             UrlFinder = new Regex(@"ss://(?<base64>[A-Za-z0-9+-/=_]+)(?:#(?<tag>\S+))?", RegexOptions.IgnoreCase),
             DetailsParser = new Regex(@"^((?<method>.+?):(?<password>.*)@(?<hostname>.+?):(?<port>\d+?))$", RegexOptions.IgnoreCase);
 
-        private const int DefaultServerTimeoutSec = 5;
-        public const int MaxServerTimeoutSec = 20;
-
         public string server;
         public int server_port;
         public string password;
         public string method;
-        public string remarks; 
-        public int timeout;
+        public string remarks;
 
         public override int GetHashCode()
         {
@@ -66,7 +62,6 @@ namespace Fuckshadows.Model
             method = "aes-256-cfb";
             password = "";
             remarks = "";
-            timeout = DefaultServerTimeoutSec;
         }
 
         public static List<Server> GetServers(string ssURL)

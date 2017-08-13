@@ -50,21 +50,12 @@ Password=密碼
 Encryption=加密
 Proxy Port=Proxy 連接埠
 Remarks=註解
-Timeout(Sec)=逾時 (秒)
 Onetime Authentication=單次驗證
 OK=確定
 Cancel=取消
 New server=新伺服器
 Move &Up=上移 (&U)
 Move D&own=下移 (&O)
-
-# Proxy Form
-
-Edit Proxy=編輯 Proxy
-Use Proxy=使用 Proxy
-Proxy Type=Proxy 類型
-Proxy Addr=Proxy 位址
-Proxy Port=Proxy 連接埠
 
 # Log Form
 
@@ -107,7 +98,6 @@ Fuckshadows Error: {0}=Fuckshadows 錯誤: {0}
 Port already in use=連接埠號碼已被使用
 Invalid server address=無效伺服器位址
 Illegal port number format=無效連接埠號碼格式
-Illegal timeout format=無效逾時格式
 Please add at least one server=請新增至少一個伺服器
 Server IP can not be blank=伺服器 IP 不能為空
 Password can not be blank=密碼不能為空
@@ -134,4 +124,3 @@ Running: Port {0}=正在執行：連接埠號碼 {0}
 Unexpected error, fuckshadows will exit. Please report to=非預期錯誤，Fuckshadows 將結束。請報告此錯誤至
 Register hotkey failed=註冊快速鍵失敗
 Cannot parse hotkey: {0}=剖析快速鍵失敗: {0}
-Timeout is invalid, it should not exceed {0}=逾時無效，不應超過 {0}

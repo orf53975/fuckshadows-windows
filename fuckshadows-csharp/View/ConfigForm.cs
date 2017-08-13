@@ -44,7 +44,6 @@ namespace Fuckshadows.View
             EncryptionLabel.Text = I18N.GetString("Encryption");
             ProxyPortLabel.Text = I18N.GetString("Proxy Port");
             RemarksLabel.Text = I18N.GetString("Remarks");
-            TimeoutLabel.Text = I18N.GetString("Timeout(Sec)");
             ServerGroupBox.Text = I18N.GetString("Server");
             OKButton.Text = I18N.GetString("OK");
             MyCancelButton.Text = I18N.GetString("Cancel");
@@ -90,12 +89,6 @@ namespace Fuckshadows.View
                 server.password = PasswordTextBox.Text;
                 server.method = EncryptionSelect.Text;
                 server.remarks = RemarksTextBox.Text;
-                if (!int.TryParse(TimeoutTextBox.Text, out server.timeout))
-                {
-                    MessageBox.Show(I18N.GetString("Illegal timeout format"));
-                    TimeoutTextBox.Focus();
-                    return false;
-                }
                 int localPort = int.Parse(ProxyPortTextBox.Text);
                 Configuration.CheckServer(server);
                 Configuration.CheckLocalPort(localPort);
@@ -123,14 +116,13 @@ namespace Fuckshadows.View
                 ProxyPortTextBox.Text = _modifiedConfiguration.localPort.ToString();
                 EncryptionSelect.Text = server.method ?? "aes-256-cfb";
                 RemarksTextBox.Text = server.remarks;
-                TimeoutTextBox.Text = server.timeout.ToString();
             }
         }
 
         private void LoadConfiguration(Configuration configuration)
         {
             ServersListBox.Items.Clear();
-            foreach (Server server in _modifiedConfiguration.configs)
+            foreach (Server server in configuration.configs)
             {
                 ServersListBox.Items.Add(server.FriendlyName());
             }

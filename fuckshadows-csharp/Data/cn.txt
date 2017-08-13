@@ -50,21 +50,12 @@ Password=密码
 Encryption=加密
 Proxy Port=代理端口
 Remarks=备注
-Timeout(Sec)=超时(秒)
 Onetime Authentication=一次性认证
 OK=确定
 Cancel=取消
 New server=未配置的服务器
 Move &Up=上移(&U)
 Move D&own=下移(&O)
-
-# Proxy Form
-
-Edit Proxy=代理设置
-Use Proxy=使用代理
-Proxy Type=代理类型
-Proxy Addr=代理地址
-Proxy Port=代理端口
 
 # Log Form
 
@@ -107,7 +98,6 @@ Fuckshadows Error: {0}=Fuckshadows 错误: {0}
 Port already in use=端口已被占用
 Invalid server address=非法服务器地址
 Illegal port number format=非法端口格式
-Illegal timeout format=非法超时格式
 Please add at least one server=请添加至少一个服务器
 Server IP can not be blank=服务器 IP 不能为空
 Password can not be blank=密码不能为空
@@ -134,4 +124,3 @@ Running: Port {0}=正在运行：端口 {0}
 Unexpected error, fuckshadows will exit. Please report to=非预期错误，Fuckshadows将退出。请提交此错误到
 Register hotkey failed=注册热键失败
 Cannot parse hotkey: {0}=解析热键失败: {0}
-Timeout is invalid, it should not exceed {0}=超时无效，不应超过 {0}
