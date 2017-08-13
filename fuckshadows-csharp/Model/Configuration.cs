@@ -83,7 +83,9 @@ namespace Fuckshadows.Model
                     configs = new List<Server>()
                     {
                         GetDefaultServer()
-                    }
+                    },
+                    logViewer = new LogViewerConfig(),
+                    hotkey = new HotkeyConfig()
                 };
             }
         }
