@@ -119,10 +119,18 @@ namespace Fuckshadows.Controller
         {
             if (args == null)
                 return;
-            lock (_bufMgrLock) {
-                args.ClearAndResetSaeaProperties();
-                if (! _argsPool.IsAddingCompleted)
-                    _argsPool.Add(args);
+            try
+            {
+                lock (_bufMgrLock) {
+                    args.ClearAndResetSaeaProperties();
+                    if (! _argsPool.IsAddingCompleted)
+                        _argsPool.Add(args);
+                }
+            }
+            catch (ObjectDisposedException e)
+            {
+                // In general, it doesn't make sense, log them in case we have interest
+                Logging.LogUsefulException(e);
             }
             // set origin to null
             args = null;
@@ -169,13 +177,17 @@ namespace Fuckshadows.Controller
             if (!_config._isSetBuffer) return;
             lock (_bufMgrLock)
             {
-                try {
+                try
+                {
                     if (_config._isSetBuffer) {
                         byte[] buf = e.Saea.Buffer;
                         e.Saea.SetBuffer(null, 0, 0);
                         _bufferManager.ReturnBuffer(buf);
                     }
-                } catch (ArgumentNullException) {
+                }
+                catch (Exception exception)
+                {
+                    Logging.LogUsefulException(exception);
                 }
             }
         }
@@ -202,7 +214,7 @@ namespace Fuckshadows.Controller
                     ClearBuffer(arg);
                     arg.Dispose();
                 }
-                _argsPool?.Dispose();
+                _argsPool.Dispose();
                 lock (_bufMgrLock)
                 {
                     if (_config._isSetBuffer)

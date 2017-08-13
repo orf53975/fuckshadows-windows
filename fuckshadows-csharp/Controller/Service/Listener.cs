@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 
@@ -131,7 +132,7 @@ namespace Fuckshadows.Controller
                     udpSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                     var err = await _udpSocket.ReceiveFromAsync(udpSaea);
                     ServiceUserToken token = new ServiceUserToken();
-                    if (err == SocketError.Success)
+                    if (err == SocketError.Success && udpSaea.Saea.BytesTransferred > 0)
                     {
                         var e = udpSaea.Saea;
                         token.socket = _udpSocket;
@@ -206,7 +207,7 @@ namespace Fuckshadows.Controller
                 var serviceToken = new ServiceUserToken();
                 var bytesReceived = token.BytesTotalTransferred;
                 Logging.Debug($"RecvFirstPacket: {err},{bytesReceived}");
-                if (err == SocketError.Success)
+                if (err == SocketError.Success && bytesReceived > 0)
                 {
                     serviceToken.socket = clientSocket;
                     serviceToken.firstPacket = new byte[bytesReceived];
@@ -215,7 +216,8 @@ namespace Fuckshadows.Controller
                 }
                 else
                 {
-                    Logging.Error($"RecvFirstPacket socket err: {err}");
+                    Logging.Error($"RecvFirstPacket socket err: {err},{bytesReceived}");
+                    goto Error;
                 }
                 _argsPool.Return(ref arg);
 
@@ -226,6 +228,7 @@ namespace Fuckshadows.Controller
                         return;
                     }
                 }
+                Error:
                 // no service found for this
                 if (clientSocket.ProtocolType == ProtocolType.Tcp)
                 {

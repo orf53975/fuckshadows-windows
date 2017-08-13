@@ -40,6 +40,7 @@ namespace Fuckshadows.Controller
             }
             byte[] firstPacket = obj.firstPacket;
             int length = obj.firstPacketLength;
+            if (length <= 0) return false;
 
             new Handler().Start(firstPacket, length, socket, _targetPort, _argsPool);
             return true;
@@ -88,7 +89,6 @@ namespace Fuckshadows.Controller
                     // Connect to the remote endpoint.
                     _remote = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                     _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
-                    _remote.SetTFO();
 
                     Task.Factory.StartNew(async () => { await StartConnect(targetPort); },
                         TaskCreationOptions.PreferFairness);
