@@ -33,6 +33,7 @@ namespace Fuckshadows.Controller
         public override bool Handle(ServiceUserToken obj)
         {
             Socket socket = obj.socket;
+            if (socket == null) return false;
             if (socket.ProtocolType != ProtocolType.Tcp)
             {
                 return false;
