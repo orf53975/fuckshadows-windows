@@ -17,14 +17,15 @@ namespace Fuckshadows.Controller
         private FuckshadowsController _controller;
 
         // TODO: choose a smart number
-        private LRUCache<IPEndPoint, UDPHandler> _cache = new LRUCache<IPEndPoint, UDPHandler>(512);
+        private LRUCache<IPEndPoint, UDPHandler> _cache = new LRUCache<IPEndPoint, UDPHandler>(UDP_HANDLER_NUM);
 
         public long outbound = 0;
         public long inbound = 0;
 
         private SaeaAwaitablePool _argsPool;
 
-        private const int UDPPacketLen = 2048;
+        private const int UDPPacketLen = 1500;
+        private const int UDP_HANDLER_NUM = 512;
 
         public UDPRelay(FuckshadowsController controller)
         {
@@ -36,9 +37,8 @@ namespace Fuckshadows.Controller
         {
             _argsPool = new SaeaAwaitablePool();
             _argsPool.SetInitPoolSize(128);
-            _argsPool.SetMaxPoolSize(512);
+            _argsPool.SetMaxPoolSize(UDP_HANDLER_NUM);
             _argsPool.SetEachBufSize(UDPPacketLen);
-            _argsPool.SetNumOfOpsToPreAlloc(2);
             _argsPool.FinishConfig();
         }
 
@@ -143,7 +143,8 @@ namespace Fuckshadows.Controller
                         byte[] dataOut = new byte[bytesReceived];
                         encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
                         encryptor.DecryptUDP(udpSaea.Saea.Buffer, bytesReceived, dataOut, out outlen);
-                        _argsPool.Return(ref udpSaea);
+                        _argsPool.Return(udpSaea);
+                        udpSaea = null;
 
                         udpSaea = _argsPool.Rent();
                         byte[] buf = udpSaea.Saea.Buffer;
@@ -158,6 +159,8 @@ namespace Fuckshadows.Controller
                             Close();
                             return;
                         }
+                        _argsPool.Return(udpSaea);
+                        udpSaea = null;
                     }
                 }
                 catch (Exception e)
@@ -167,7 +170,8 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(ref udpSaea);
+                    _argsPool.Return(udpSaea);
+                    udpSaea = null;
                 }
             }
 

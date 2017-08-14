@@ -26,7 +26,6 @@ namespace Fuckshadows.Controller
             _argsPool.SetInitPoolSize(512);
             _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
             _argsPool.SetEachBufSize(RecvSize);
-            _argsPool.SetNumOfOpsToPreAlloc(2);
             _argsPool.FinishConfig();
         }
 
@@ -125,7 +124,8 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(ref tcpSaea);
+                    _argsPool.Return(tcpSaea);
+                    tcpSaea = null;
                 }
             }
 
@@ -180,7 +180,8 @@ namespace Fuckshadows.Controller
                         localSendSaea = _argsPool.Rent();
                         Buffer.BlockCopy(serverRecvSaea.Saea.Buffer, 0, localSendSaea.Saea.Buffer, 0,
                             bytesRecved);
-                        _argsPool.Return(ref serverRecvSaea);
+                        _argsPool.Return(serverRecvSaea);
+                        serverRecvSaea = null;
 
                         token = await _local.FullSendTaskAsync(localSendSaea, bytesRecved);
                         err = token.SocketError;
@@ -192,6 +193,8 @@ namespace Fuckshadows.Controller
                             return;
                         }
                         Debug.Assert(bytesSent == bytesRecved);
+                        _argsPool.Return(localSendSaea);
+                        localSendSaea = null;
                     }
                 }
                 catch (AggregateException agex)
@@ -209,8 +212,10 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(ref serverRecvSaea);
-                    _argsPool.Return(ref localSendSaea);
+                    _argsPool.Return(serverRecvSaea);
+                    serverRecvSaea = null;
+                    _argsPool.Return(localSendSaea);
+                    localSendSaea = null;
                 }
             }
 
@@ -249,7 +254,8 @@ namespace Fuckshadows.Controller
                         serverSendSaea = _argsPool.Rent();
                         Buffer.BlockCopy(localRecvSaea.Saea.Buffer, 0, serverSendSaea.Saea.Buffer, 0,
                             bytesRecved);
-                        _argsPool.Return(ref localRecvSaea);
+                        _argsPool.Return(localRecvSaea);
+                        localRecvSaea = null;
 
                         token = await _remote.FullSendTaskAsync(serverSendSaea, bytesRecved);
                         err = token.SocketError;
@@ -260,6 +266,8 @@ namespace Fuckshadows.Controller
                             Close();
                             return;
                         }
+                        _argsPool.Return(serverSendSaea);
+                        serverSendSaea = null;
                         Debug.Assert(bytesSent == bytesRecved);
                     }
                 }
@@ -278,8 +286,10 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(ref localRecvSaea);
-                    _argsPool.Return(ref serverSendSaea);
+                    _argsPool.Return(localRecvSaea);
+                    localRecvSaea = null;
+                    _argsPool.Return(serverSendSaea);
+                    serverSendSaea = null;
                 }
             }
 

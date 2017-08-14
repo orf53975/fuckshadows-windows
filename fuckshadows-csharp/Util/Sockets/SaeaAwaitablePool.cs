@@ -84,7 +84,7 @@ namespace Fuckshadows.Controller
 
         private static int RoundUpToNearest(int x)
         {
-            return (x + 4 - 1) & ~(4 - 1);  //向上取整为2^x的倍数需要将本行的两个4改为2^x
+            return (x + 2 - 1) & ~(2 - 1);
         }
 
         /// <summary>
@@ -115,7 +115,7 @@ namespace Fuckshadows.Controller
         /// Return a SAEA that rented before
         /// </summary>
         /// <param name="args"></param>
-        public void Return(ref SaeaAwaitable args)
+        public void Return(SaeaAwaitable args)
         {
             if (args == null)
                 return;
@@ -132,8 +132,6 @@ namespace Fuckshadows.Controller
                 // In general, it doesn't make sense, log them in case we have interest
                 Logging.LogUsefulException(e);
             }
-            // set origin to null
-            args = null;
         }
 
         protected SaeaAwaitable CreateSaeaAwaitable()
@@ -238,7 +236,7 @@ namespace Fuckshadows.Controller
             public int _initPoolSize;
             public int _maxPoolSize;
             public int _maxSingleBufSize;
-            public int _operationsToPreAlloc = 4;
+            public int _operationsToPreAlloc = 1;
             // In general, we will attach buffer
             public bool _isSetBuffer = true;
         }

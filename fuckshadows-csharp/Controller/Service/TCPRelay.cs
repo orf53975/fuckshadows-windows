@@ -23,7 +23,7 @@ namespace Fuckshadows.Controller
         private Configuration _config;
         public SaeaAwaitablePool _argsPool;
         public ISet<TCPHandler> Handlers { get; private set; }
-        public const int MAX_HANDLER_NUM = 8192;
+        public const int MAX_HANDLER_NUM = 4096;
 
         public const int CMD_CONNECT = 0x01;
         public const int CMD_UDP_ASSOC = 0x03;
@@ -108,7 +108,6 @@ namespace Fuckshadows.Controller
             _argsPool.SetInitPoolSize(256);
             _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
             _argsPool.SetEachBufSize(BufferSize);
-            _argsPool.SetNumOfOpsToPreAlloc(4);
             _argsPool.FinishConfig();
         }
 
@@ -247,6 +246,8 @@ namespace Fuckshadows.Controller
                     Close();
                     return;
                 }
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
                 Debug.Assert(bytesSent == response.Length);
                 Task.Factory.StartNew(async () => { await Sock5RequestRecv(); }).Forget();
             }
@@ -257,7 +258,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref tcpSaea);
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
             }
         }
 
@@ -300,7 +302,8 @@ namespace Fuckshadows.Controller
                         _remainingBytes = new byte[_remainingBytesLen];
                         Buffer.BlockCopy(recvBuf, _addrBufLength, _remainingBytes, 0, _remainingBytesLen);
                     }
-
+                    _argsPool.Return(tcpSaea);
+                    tcpSaea = null;
                     // read address and call the corresponding method
                     if (_command == TCPRelay.CMD_CONNECT)
                     {
@@ -319,7 +322,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref tcpSaea);
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
             }
         }
 
@@ -341,6 +345,8 @@ namespace Fuckshadows.Controller
                     Close();
                     return;
                 }
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
                 Debug.Assert(bytesSent == TCPRelay.Sock5ConnectRequestReplySuccess.Length);
                 Task.Factory.StartNew(async () => { await StartConnect(); }).Forget();
             }
@@ -351,7 +357,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref tcpSaea);
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
             }
         }
 
@@ -435,7 +442,8 @@ namespace Fuckshadows.Controller
                     return;
                 }
                 Debug.Assert(sentSize == response.Length);
-                _argsPool.Return(ref tcpSaea);
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
                 circularRecvSaea = _argsPool.Rent();
 
                 while (IsRunning)
@@ -447,6 +455,8 @@ namespace Fuckshadows.Controller
                     if (ret != SocketError.Success) return;
                     circularRecvSaea.ClearAndResetSaeaProperties();
                 }
+                _argsPool.Return(circularRecvSaea);
+                circularRecvSaea = null;
             }
             catch (Exception e)
             {
@@ -455,8 +465,10 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref tcpSaea);
-                _argsPool.Return(ref circularRecvSaea);
+                _argsPool.Return(tcpSaea);
+                tcpSaea = null;
+                _argsPool.Return(circularRecvSaea);
+                circularRecvSaea = null;
             }
         }
 
@@ -529,6 +541,9 @@ namespace Fuckshadows.Controller
                     return;
                 }
 
+                _argsPool.Return(serverSaea);
+                serverSaea = null;
+
                 if (_config.isVerboseLogging)
                 {
                     Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
@@ -557,7 +572,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref serverSaea);
+                _argsPool.Return(serverSaea);
+                serverSaea = null;
             }
         }
 
@@ -613,7 +629,8 @@ namespace Fuckshadows.Controller
                             localSendSaea.Saea.Buffer,
                             out decBufLen);
                     }
-                    _argsPool.Return(ref serverRecvSaea);
+                    _argsPool.Return(serverRecvSaea);
+                    serverRecvSaea = null;
 
                     token = await _localSocket.FullSendTaskAsync(localSendSaea, decBufLen);
                     err = token.SocketError;
@@ -624,6 +641,8 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
+                    _argsPool.Return(localSendSaea);
+                    localSendSaea = null;
                     Debug.Assert(bytesSent == decBufLen);
                 }
             }
@@ -642,8 +661,10 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref serverRecvSaea);
-                _argsPool.Return(ref localSendSaea);
+                _argsPool.Return(serverRecvSaea);
+                serverRecvSaea = null;
+                _argsPool.Return(localSendSaea);
+                localSendSaea = null;
             }
         }
 
@@ -689,7 +710,8 @@ namespace Fuckshadows.Controller
                             serverSendSaea.Saea.Buffer,
                             out encBufLen);
                     }
-                    _argsPool.Return(ref localRecvSaea);
+                    _argsPool.Return(localRecvSaea);
+                    localRecvSaea = null;
 
                     _startSendingTime = DateTime.Now;
                     _tcprelay.UpdateOutboundCounter(_server, encBufLen);
@@ -704,6 +726,8 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
+                    _argsPool.Return(serverSendSaea);
+                    serverSendSaea = null;
                     Debug.Assert(bytesSent == encBufLen);
                 }
             }
@@ -722,8 +746,10 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref localRecvSaea);
-                _argsPool.Return(ref serverSendSaea);
+                _argsPool.Return(localRecvSaea);
+                localRecvSaea = null;
+                _argsPool.Return(serverSendSaea);
+                serverSendSaea = null;
             }
         }
 

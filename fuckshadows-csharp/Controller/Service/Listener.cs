@@ -58,15 +58,13 @@ namespace Fuckshadows.Controller
             _acceptArgsPool.SetInitPoolSize(256);
             _acceptArgsPool.SetMaxPoolSize(BACKLOG);
             _acceptArgsPool.SetNoSetBuffer();
-            _acceptArgsPool.SetNumOfOpsToPreAlloc(1);
             _acceptArgsPool.FinishConfig();
 
             // first packet handling pool
             _argsPool = new SaeaAwaitablePool();
             _argsPool.SetInitPoolSize(256);
-            _argsPool.SetMaxPoolSize(8192);
+            _argsPool.SetMaxPoolSize(TCPRelay.MAX_HANDLER_NUM);
             _argsPool.SetEachBufSize(MaxFirstPacketLen);
-            _argsPool.SetNumOfOpsToPreAlloc(2);
             _argsPool.FinishConfig();
         }
 
@@ -141,7 +139,8 @@ namespace Fuckshadows.Controller
                         token.remoteEndPoint = e.RemoteEndPoint;
                         Buffer.BlockCopy(e.Buffer, e.Offset, token.firstPacket, 0, e.BytesTransferred);
                     }
-                    _argsPool.Return(ref udpSaea);
+                    _argsPool.Return(udpSaea);
+                    udpSaea = null;
 
                     foreach (IService service in _services)
                     {
@@ -158,7 +157,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref udpSaea);
+                _argsPool.Return(udpSaea);
+                udpSaea = null;
             }
         }
 
@@ -183,7 +183,8 @@ namespace Fuckshadows.Controller
                     {
                         Logging.Error($"Accept socket err: {socketError}");
                     }
-                    _acceptArgsPool.Return(ref saea);
+                    _acceptArgsPool.Return(saea);
+                    saea = null;
                 }
             }
             catch (Exception ex)
@@ -192,7 +193,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _acceptArgsPool.Return(ref saea);
+                _acceptArgsPool.Return(saea);
+                saea = null;
             }
         }
 
@@ -219,7 +221,8 @@ namespace Fuckshadows.Controller
                     Logging.Error($"RecvFirstPacket socket err: {err},{bytesReceived}");
                     goto Error;
                 }
-                _argsPool.Return(ref arg);
+                _argsPool.Return(arg);
+                arg = null;
 
                 foreach (IService service in _services)
                 {
@@ -241,7 +244,8 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(ref arg);
+                _argsPool.Return(arg);
+                arg = null;
             }
         }
 

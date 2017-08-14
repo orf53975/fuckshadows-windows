@@ -45,20 +45,22 @@ namespace Fuckshadows.Util.Sockets
         public SaeaAwaiter(SaeaAwaitable awaitable)
         {
             _awaitable = awaitable;
-            _awaitable.Saea.Completed += (sender, args) =>
+            _awaitable.Saea.Completed += this.OnSaeaOnCompleted;
+        }
+
+        private void OnSaeaOnCompleted(object sender, SocketAsyncEventArgs args)
+        {
+            var continuation = _continuation ?? Interlocked.CompareExchange(ref _continuation, SENTINEL, null);
+
+            if (continuation != null)
             {
-                var continuation = _continuation ?? Interlocked.CompareExchange(ref _continuation, SENTINEL, null);
+                Complete();
 
-                if (continuation != null)
+                if (continuation != SENTINEL)
                 {
-                    Complete();
-
-                    if (continuation != SENTINEL)
-                    {
-                        Task.Factory.StartNew(continuation, TaskCreationOptions.PreferFairness);
-                    }
+                    Task.Factory.StartNew(continuation, TaskCreationOptions.PreferFairness);
                 }
-            };
+            }
         }
 
         /// <summary>
