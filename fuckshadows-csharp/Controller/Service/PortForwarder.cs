@@ -12,7 +12,6 @@ namespace Fuckshadows.Controller
         private readonly int _targetPort;
         private SaeaAwaitablePool _argsPool;
         public const int RecvSize = 8192;
-        private const int MAX_HANDLER_NUM = TCPRelay.MAX_HANDLER_NUM;
 
         public PortForwarder(int targetPort)
         {
@@ -22,11 +21,7 @@ namespace Fuckshadows.Controller
 
         private void InitArgsPool()
         {
-            _argsPool = new SaeaAwaitablePool();
-            _argsPool.SetInitPoolSize(512);
-            _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
-            _argsPool.SetEachBufSize(RecvSize);
-            _argsPool.FinishConfig();
+            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -47,7 +42,6 @@ namespace Fuckshadows.Controller
 
         public override void Stop()
         {
-            _argsPool.Dispose();
         }
 
         private class Handler

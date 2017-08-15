@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Fuckshadows.Controller.Hotkeys;
 using Fuckshadows.Util;
+using Fuckshadows.Util.Sockets;
 using Fuckshadows.View;
 using Microsoft.Win32;
 
@@ -71,6 +72,7 @@ namespace Fuckshadows
                 MainController = new FuckshadowsController();
                 MenuController = new MenuViewController(MainController);
                 HotKeys.Init(MainController);
+                SaeaAwaitablePoolManager.Init();
                 MainController.Start();
                 Application.Run();
             }
@@ -186,6 +188,7 @@ namespace Fuckshadows
             Application.ThreadException -= Application_ThreadException;
             TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             HotKeys.Destroy();
+            SaeaAwaitablePoolManager.Dispose();
             if (MainController != null)
             {
                 MainController.Stop();

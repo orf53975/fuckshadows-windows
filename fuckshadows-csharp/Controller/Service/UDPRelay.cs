@@ -35,11 +35,7 @@ namespace Fuckshadows.Controller
 
         private void InitArgsPool()
         {
-            _argsPool = new SaeaAwaitablePool();
-            _argsPool.SetInitPoolSize(128);
-            _argsPool.SetMaxPoolSize(UDP_HANDLER_NUM);
-            _argsPool.SetEachBufSize(UDPPacketLen);
-            _argsPool.FinishConfig();
+            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -72,7 +68,6 @@ namespace Fuckshadows.Controller
 
         public override void Stop()
         {
-            _argsPool.Dispose();
         }
 
         public class UDPHandler

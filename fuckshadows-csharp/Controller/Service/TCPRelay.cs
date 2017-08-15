@@ -104,11 +104,7 @@ namespace Fuckshadows.Controller
 
         private void InitArgsPool()
         {
-            _argsPool = new SaeaAwaitablePool();
-            _argsPool.SetInitPoolSize(256);
-            _argsPool.SetMaxPoolSize(MAX_HANDLER_NUM);
-            _argsPool.SetEachBufSize(BufferSize);
-            _argsPool.FinishConfig();
+            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public override void Stop()
@@ -119,8 +115,6 @@ namespace Fuckshadows.Controller
                 handlersToClose.AddRange(Handlers);
             }
             handlersToClose.ForEach(h => h.Close());
-
-            _argsPool.Dispose();
         }
 
         public void UpdateInboundCounter(Server server, long n)

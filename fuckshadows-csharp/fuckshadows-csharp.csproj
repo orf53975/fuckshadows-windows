@@ -178,6 +178,7 @@
     <Compile Include="Util\ProcessManagement\ThreadUtil.cs" />
     <Compile Include="Encryption\RNG.cs" />
     <Compile Include="Util\Sockets\SaeaAwaitable.cs" />
+    <Compile Include="Util\Sockets\SaeaAwaitablePoolManager.cs" />
     <Compile Include="Util\Sockets\SaeaAwaiter.cs" />
     <Compile Include="Util\Sockets\SocketExtensions.cs" />
     <Compile Include="Util\Sockets\SaeaAwaitablePool.cs" />

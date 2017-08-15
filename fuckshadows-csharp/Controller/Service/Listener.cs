@@ -5,7 +5,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 
@@ -21,7 +20,7 @@ namespace Fuckshadows.Controller
         private SaeaAwaitablePool _acceptArgsPool;
         private SaeaAwaitablePool _argsPool;
 
-        private const int BACKLOG = 1024;
+        public const int BACKLOG = 1024;
         private const int MaxFirstPacketLen = 4096;
 
         private int _state;
@@ -53,19 +52,8 @@ namespace Fuckshadows.Controller
 
         private void InitArgsPool()
         {
-            //accept args pool don't need buffer
-            _acceptArgsPool = new SaeaAwaitablePool();
-            _acceptArgsPool.SetInitPoolSize(256);
-            _acceptArgsPool.SetMaxPoolSize(BACKLOG);
-            _acceptArgsPool.SetNoSetBuffer();
-            _acceptArgsPool.FinishConfig();
-
-            // first packet handling pool
-            _argsPool = new SaeaAwaitablePool();
-            _argsPool.SetInitPoolSize(256);
-            _argsPool.SetMaxPoolSize(TCPRelay.MAX_HANDLER_NUM);
-            _argsPool.SetEachBufSize(MaxFirstPacketLen);
-            _argsPool.FinishConfig();
+            _acceptArgsPool = SaeaAwaitablePoolManager.GetAcceptOnlyInstance();
+            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public void Start(Configuration config)
@@ -268,9 +256,6 @@ namespace Fuckshadows.Controller
             }
 
             _services.ForEach(s => s.Stop());
-
-            _acceptArgsPool.Dispose();
-            _argsPool.Dispose();
         }
     }
 }
