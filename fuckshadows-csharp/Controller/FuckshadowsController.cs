@@ -14,6 +14,7 @@ using Fuckshadows.Util;
 using Newtonsoft.Json;
 using System.Linq;
 using System.Threading.Tasks;
+using Fuckshadows.Util.Sockets;
 
 namespace Fuckshadows.Controller
 {
@@ -231,6 +232,7 @@ namespace Fuckshadows.Controller
             {
                 SystemProxy.Update(_config, true, null);
             }
+            SaeaAwaitablePoolManager.Dispose();
         }
 
         public void TouchPACFile()
@@ -371,6 +373,8 @@ namespace Fuckshadows.Controller
             // some logic in configuration updated the config when saving, we need to read it again
             _config = Configuration.Load();
             StatisticsConfiguration = StatisticsStrategyConfiguration.Load();
+
+            SaeaAwaitablePoolManager.Init();
 
             if (privoxyRunner == null)
             {

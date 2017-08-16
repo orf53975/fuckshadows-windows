@@ -29,6 +29,7 @@ namespace Fuckshadows.Util.Sockets
         /// </summary>
         private static void InitAcceptOnlyPool()
         {
+            if (AcceptOnlyInstance != null) return;
             //accept args pool don't need buffer
             AcceptOnlyInstance = new SaeaAwaitablePool();
             AcceptOnlyInstance.SetInitPoolSize(256);
@@ -43,6 +44,7 @@ namespace Fuckshadows.Util.Sockets
         /// </summary>
         private static void InitOrdinaryPool()
         {
+            if (OrdinaryInstance != null) return;
             OrdinaryInstance = new SaeaAwaitablePool();
             OrdinaryInstance.SetInitPoolSize(256);
             OrdinaryInstance.SetMaxPoolSize(TCPRelay.MAX_HANDLER_NUM);
@@ -51,13 +53,21 @@ namespace Fuckshadows.Util.Sockets
             OrdinaryInstance.FinishConfig();
         }
 
-        private static SaeaAwaitablePool AcceptOnlyInstance { get; set; }
-        private static SaeaAwaitablePool OrdinaryInstance { get; set; }
+        private static SaeaAwaitablePool AcceptOnlyInstance { get; set; } = null;
+        private static SaeaAwaitablePool OrdinaryInstance { get; set; } = null;
 
         public static void Dispose()
         {
-            AcceptOnlyInstance?.Dispose();
-            OrdinaryInstance?.Dispose();
+            if (AcceptOnlyInstance != null)
+            {
+                AcceptOnlyInstance.Dispose();
+                AcceptOnlyInstance = null;
+            }
+            if (OrdinaryInstance != null)
+            {
+                OrdinaryInstance.Dispose();
+                OrdinaryInstance = null;
+            }
         }
 
         public static void Init()
