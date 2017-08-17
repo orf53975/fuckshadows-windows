@@ -7,7 +7,6 @@ using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Fuckshadows.Controller.Hotkeys;
 using Fuckshadows.Util;
-using Fuckshadows.Util.Sockets;
 using Fuckshadows.View;
 using Microsoft.Win32;
 

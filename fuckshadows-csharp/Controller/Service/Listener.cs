@@ -117,15 +117,20 @@ namespace Fuckshadows.Controller
                     udpSaea = _argsPool.Rent();
                     udpSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                     var err = await _udpSocket.ReceiveFromAsync(udpSaea);
+                    var saea = udpSaea.Saea;
+                    var bytesRecved = saea.BytesTransferred;
                     ServiceUserToken token = new ServiceUserToken();
-                    if (err == SocketError.Success && udpSaea.Saea.BytesTransferred > 0)
+                    if (err == SocketError.Success && bytesRecved > 0)
                     {
-                        var e = udpSaea.Saea;
                         token.socket = _udpSocket;
-                        token.firstPacket = new byte[e.BytesTransferred];
-                        token.firstPacketLength = e.BytesTransferred;
-                        token.remoteEndPoint = e.RemoteEndPoint;
-                        Buffer.BlockCopy(e.Buffer, e.Offset, token.firstPacket, 0, e.BytesTransferred);
+                        token.firstPacket = new byte[bytesRecved];
+                        token.firstPacketLength = bytesRecved;
+                        token.remoteEndPoint = saea.RemoteEndPoint;
+                        Buffer.BlockCopy(saea.Buffer, 0, token.firstPacket, 0, bytesRecved);
+                    }
+                    else
+                    {
+                        Logging.Error($"RecvFrom: {err},{bytesRecved}");
                     }
                     _argsPool.Return(udpSaea);
                     udpSaea = null;
