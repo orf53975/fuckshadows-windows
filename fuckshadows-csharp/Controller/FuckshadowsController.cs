@@ -24,9 +24,7 @@ namespace Fuckshadows.Controller
         // handle user actions
         // manipulates UI
         // interacts with low level logic
-
-        private Thread _trafficThread;
-
+        
         private Listener _listener;
         private PACServer _pacServer;
         private Configuration _config;
@@ -41,6 +39,8 @@ namespace Fuckshadows.Controller
         public long InboundCounter => Interlocked.Read(ref _inboundCounter);
         public long OutboundCounter => Interlocked.Read(ref _outboundCounter);
         public Queue<TrafficPerSecond> trafficPerSecondQueue;
+        public const int TrafficPerSecondQueueMaxSize = 61;
+        private CancellationTokenSource trafficCancellationTokenSource = null;
 
         public long _tcpConnCounter = 0;
         public long TCPConnectionCounter => Interlocked.Read(ref _tcpConnCounter);
@@ -82,7 +82,7 @@ namespace Fuckshadows.Controller
             _config = Configuration.Load();
             StatisticsConfiguration = StatisticsStrategyConfiguration.Load();
             _strategyManager = new StrategyManager(this);
-            StartTrafficStatistics(61);
+            InitTrafficStatistics();
         }
 
         public void Start()
@@ -233,6 +233,7 @@ namespace Fuckshadows.Controller
                 SystemProxy.Update(_config, true, null);
             }
             SaeaAwaitablePoolManager.Dispose();
+            StopTrafficStatistics();
         }
 
         public void TouchPACFile()
@@ -375,6 +376,7 @@ namespace Fuckshadows.Controller
             StatisticsConfiguration = StatisticsStrategyConfiguration.Load();
 
             SaeaAwaitablePoolManager.Init();
+            ReloadTrafficStatistics();
 
             if (privoxyRunner == null)
             {
@@ -516,40 +518,73 @@ namespace Fuckshadows.Controller
 
         #region Traffic Statistics
 
-        private void StartTrafficStatistics(int queueMaxSize)
+        private void InitTrafficStatistics()
         {
             trafficPerSecondQueue = new Queue<TrafficPerSecond>();
-            for (int i = 0; i < queueMaxSize; i++)
+            for (int i = 0; i < TrafficPerSecondQueueMaxSize; i++)
             {
                 trafficPerSecondQueue.Enqueue(new TrafficPerSecond());
             }
-            _trafficThread = new Thread(new ThreadStart(() => TrafficStatistics(queueMaxSize)));
-            _trafficThread.IsBackground = true;
-            _trafficThread.Start();
         }
 
-        private void TrafficStatistics(int queueMaxSize)
+        private void ReloadTrafficStatistics()
         {
-            TrafficPerSecond previous, current;
-            while (true)
+            StopTrafficStatistics();
+            StartTrafficStatistics();
+        }
+
+        private void StartTrafficStatistics()
+        {
+            trafficCancellationTokenSource = new CancellationTokenSource();
+            try
             {
-                previous = trafficPerSecondQueue.Last();
-                current = new TrafficPerSecond
+                Task.Factory.StartNew(() => TrafficStatistics(1000, trafficCancellationTokenSource.Token),
+                    TaskCreationOptions.LongRunning).ConfigureAwait(false);
+            }
+            catch (AggregateException ae)
+            {
+                Logging.Error(ae.InnerExceptions.ToString());
+            }
+        }
+
+        private void StopTrafficStatistics()
+        {
+            if (trafficCancellationTokenSource == null) return;
+            trafficCancellationTokenSource.Cancel();
+            trafficCancellationTokenSource.Dispose();
+            trafficCancellationTokenSource = null;
+        }
+
+        private async Task TrafficStatistics(int repeatMS, CancellationToken ct)
+        {
+            try
+            {
+                TrafficPerSecond previous, current;
+                while (true)
                 {
-                    inboundCounter = InboundCounter,
-                    outboundCounter = OutboundCounter
-                };
+                    previous = trafficPerSecondQueue.Last();
+                    current = new TrafficPerSecond
+                              {
+                                  inboundCounter = InboundCounter,
+                                  outboundCounter = OutboundCounter
+                              };
 
-                current.inboundIncreasement = current.inboundCounter - previous.inboundCounter;
-                current.outboundIncreasement = current.outboundCounter - previous.outboundCounter;
+                    current.inboundIncreasement = current.inboundCounter - previous.inboundCounter;
+                    current.outboundIncreasement = current.outboundCounter - previous.outboundCounter;
 
-                trafficPerSecondQueue.Enqueue(current);
-                if (trafficPerSecondQueue.Count > queueMaxSize)
-                    trafficPerSecondQueue.Dequeue();
+                    trafficPerSecondQueue.Enqueue(current);
+                    if (trafficPerSecondQueue.Count > TrafficPerSecondQueueMaxSize)
+                        trafficPerSecondQueue.Dequeue();
 
-                TrafficChanged?.Invoke(this, new EventArgs());
+                    TrafficChanged?.Invoke(this, new EventArgs());
 
-                Thread.Sleep(1000);
+                    await Task.Delay(repeatMS, ct);
+                    if (ct.IsCancellationRequested) return;
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // ignore when this task got canceled
             }
         }
 
