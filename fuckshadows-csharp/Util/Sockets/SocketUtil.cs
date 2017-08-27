@@ -37,38 +37,6 @@ namespace Fuckshadows.Util.Sockets
         }
 
 
-        public static void FullClose(this System.Net.Sockets.Socket s)
-        {
-            try
-            {
-                s.Shutdown(SocketShutdown.Both);
-            }
-            catch (Exception)
-            {
-            }
-            try
-            {
-                s.Disconnect(false);
-            }
-            catch (Exception)
-            {
-            }
-            try
-            {
-                s.Close();
-            }
-            catch (Exception)
-            {
-            }
-            try
-            {
-                s.Dispose();
-            }
-            catch (Exception)
-            {
-            }
-        }
-
         public static void SetTFO(this Socket s)
         {
             if (!Program.TFOSupported) return;
