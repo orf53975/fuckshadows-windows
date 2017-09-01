@@ -6,7 +6,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
 using Fuckshadows.Encryption.AEAD;
 using Fuckshadows.Encryption.Exception;
@@ -125,11 +124,6 @@ namespace Fuckshadows.Controller
         public void UpdateOutboundCounter(Server server, long n)
         {
             _controller.UpdateOutboundCounter(server, n);
-        }
-
-        public void UpdateLatency(Server server, TimeSpan latency)
-        {
-            _controller.UpdateLatency(server, latency);
         }
 
         public void IncrementTCPConnectionCounter()
@@ -468,8 +462,7 @@ namespace Fuckshadows.Controller
 
         private void CreateRemote()
         {
-            Server server = _controller.GetAServer(IStrategyCallerType.TCP,
-                (IPEndPoint) _localSocket.RemoteEndPoint,
+            Server server = _controller.GetAServer((IPEndPoint) _localSocket.RemoteEndPoint,
                 _destEndPoint);
             if (server == null || server.server == "")
                 throw new ArgumentException("No server configured");
@@ -543,10 +536,6 @@ namespace Fuckshadows.Controller
                     Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
                 }
 
-                var latency = DateTime.Now - _startConnectTime;
-                _controller.GetCurrentStrategy()?.UpdateLatency(_server, latency);
-                _tcprelay.UpdateLatency(_server, latency);
-
                 _startReceivingTime = DateTime.Now;
 
                 Task.Factory.StartNew(StartPipe, TaskCreationOptions.PreferFairness).Forget();
@@ -611,8 +600,6 @@ namespace Fuckshadows.Controller
                     Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
                     _tcprelay.UpdateInboundCounter(_server, bytesRecved);
                     lastActivity = DateTime.Now;
-
-                    _controller.GetCurrentStrategy()?.UpdateLastRead(_server);
 
                     localSendSaea = _argsPool.Rent();
                     int decBufLen = -1;
@@ -694,7 +681,6 @@ namespace Fuckshadows.Controller
                     }
                     Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
 
-                    _controller.GetCurrentStrategy()?.UpdateLastRead(_server);
                     serverSendSaea = _argsPool.Rent();
                     int encBufLen = -1;
                     lock (_encryptionLock)
@@ -709,7 +695,6 @@ namespace Fuckshadows.Controller
 
                     _startSendingTime = DateTime.Now;
                     _tcprelay.UpdateOutboundCounter(_server, encBufLen);
-                    _controller.GetCurrentStrategy()?.UpdateLastWrite(_server);
 
                     token = await _serverSocket.FullSendTaskAsync(serverSendSaea, encBufLen);
                     err = token.SocketError;

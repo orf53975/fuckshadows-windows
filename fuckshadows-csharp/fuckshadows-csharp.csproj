@@ -137,9 +137,6 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
-    <Compile Include="Controller\Service\AvailabilityStatistics.cs" />
-    <Compile Include="Controller\Strategy\HighAvailabilityStrategy.cs" />
-    <Compile Include="Controller\Strategy\StatisticsStrategy.cs" />
     <Compile Include="Controller\System\AutoStartup.cs" />
     <Compile Include="Controller\FileManager.cs" />
     <Compile Include="Controller\Service\GFWListUpdater.cs" />
@@ -161,16 +158,11 @@
     <Compile Include="Model\LogViewerConfig.cs" />
     <Compile Include="Model\Server.cs" />
     <Compile Include="Model\Configuration.cs" />
-    <Compile Include="Model\StatisticsRecord.cs" />
-    <Compile Include="Model\StatisticsStrategyConfiguration.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <Compile Include="Controller\Strategy\BalancingStrategy.cs" />
-    <Compile Include="Controller\Strategy\StrategyManager.cs" />
-    <Compile Include="Controller\Strategy\IStrategy.cs" />
     <Compile Include="Settings.cs" />
     <Compile Include="StringEx.cs" />
     <Compile Include="Controller\System\Hotkeys\Hotkeys.cs" />
@@ -228,12 +220,6 @@
     <Compile Include="View\QRCodeSplashForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="View\StatisticsStrategyConfigurationForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="View\StatisticsStrategyConfigurationForm.Designer.cs">
-      <DependentUpon>StatisticsStrategyConfigurationForm.cs</DependentUpon>
-    </Compile>
     <EmbeddedResource Include="View\ConfigForm.resx">
       <DependentUpon>ConfigForm.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -254,9 +240,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="View\QRCodeForm.resx">
       <DependentUpon>QRCodeForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="View\StatisticsStrategyConfigurationForm.resx">
-      <DependentUpon>StatisticsStrategyConfigurationForm.cs</DependentUpon>
     </EmbeddedResource>
     <None Include="app.config" />
     <None Include="app.manifest">

@@ -5,7 +5,6 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Encryption;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
@@ -57,7 +56,7 @@ namespace Fuckshadows.Controller
             if (handler == null)
             {
                 handler = new UDPHandler(socket,
-                    _controller.GetAServer(IStrategyCallerType.UDP, remoteEndPoint, null /*TODO: fix this*/),
+                    _controller.GetAServer(remoteEndPoint, null /*TODO: fix this*/),
                     remoteEndPoint, _argsPool);
                 _cache.add(remoteEndPoint, handler);
             }

@@ -170,15 +170,7 @@ namespace Fuckshadows.View
                 Icon.FromHandle(AddBitmapOverlay(_iconBaseBitmap, Resources.ssIn24, Resources.ssOut24).GetHicon());
             _notifyIcon.Icon = _targetIcon;
 
-            string serverInfo = null;
-            if (controller.GetCurrentStrategy() != null)
-            {
-                serverInfo = controller.GetCurrentStrategy().Name;
-            }
-            else
-            {
-                serverInfo = config.GetCurrentServer().FriendlyName();
-            }
+            string serverInfo = config.GetCurrentServer().FriendlyName();
             // show more info by hacking the P/Invoke declaration for NOTIFYICONDATA inside Windows Forms
             string text = I18N.GetString("Fuckshadows") + " " + UpdateChecker.Version + "\n" +
                           (enabled
@@ -269,7 +261,6 @@ namespace Fuckshadows.View
                 {
                     this._seperatorItem = new MenuItem("-"),
                     this._configItem = CreateMenuItem("Edit Servers...", new EventHandler(this.Config_Click)),
-                    CreateMenuItem("Statistics Config...", StatisticsConfigItem_Click),
                     new MenuItem("-"),
                     CreateMenuItem("Share Server Config...", new EventHandler(this.QRCodeItem_Click)),
                     CreateMenuItem("Scan QRCode from Screen...", new EventHandler(this.ScanQRCodeItem_Click)),
@@ -444,22 +435,11 @@ namespace Fuckshadows.View
                 items.RemoveAt(0);
             }
             int i = 0;
-            foreach (var strategy in controller.GetStrategies())
-            {
-                MenuItem item = new MenuItem(strategy.Name) {Tag = strategy.ID};
-                item.Click += AStrategyItem_Click;
-                items.Add(i, item);
-                i++;
-            }
 
-            // user wants a seperator item between strategy and servers menugroup
-            items.Add(i++, new MenuItem("-"));
-
-            int strategyCount = i;
             Configuration configuration = controller.GetConfigurationCopy();
             foreach (var server in configuration.configs)
             {
-                MenuItem item = new MenuItem(server.FriendlyName()) {Tag = i - strategyCount};
+                MenuItem item = new MenuItem(server.FriendlyName()) {Tag = i};
                 item.Click += AServerItem_Click;
                 items.Add(i, item);
                 i++;
@@ -468,8 +448,7 @@ namespace Fuckshadows.View
             foreach (MenuItem item in items)
             {
                 if (item.Tag != null &&
-                    (item.Tag.ToString() == configuration.index.ToString() ||
-                     item.Tag.ToString() == configuration.strategy))
+                    item.Tag.ToString() == configuration.index.ToString())
                 {
                     item.Checked = true;
                 }
@@ -636,22 +615,10 @@ namespace Fuckshadows.View
             controller.SelectServerIndex((int) item.Tag);
         }
 
-        private void AStrategyItem_Click(object sender, EventArgs e)
-        {
-            MenuItem item = (MenuItem) sender;
-            controller.SelectStrategy((string) item.Tag);
-        }
-
         private void VerboseLoggingToggleItem_Click(object sender, EventArgs e)
         {
             _verboseLoggingToggleItem.Checked = !_verboseLoggingToggleItem.Checked;
             controller.ToggleVerboseLogging(_verboseLoggingToggleItem.Checked);
-        }
-
-        private void StatisticsConfigItem_Click(object sender, EventArgs e)
-        {
-            StatisticsStrategyConfigurationForm form = new StatisticsStrategyConfigurationForm(controller);
-            form.Show();
         }
 
         private void QRCodeItem_Click(object sender, EventArgs e)

@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Web;
 using System.Windows.Forms;
-using Fuckshadows.Controller.Strategy;
 using Fuckshadows.Model;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
@@ -28,11 +27,8 @@ namespace Fuckshadows.Controller
         private Listener _listener;
         private PACServer _pacServer;
         private Configuration _config;
-        private StrategyManager _strategyManager;
         private PrivoxyRunner privoxyRunner;
         private GFWListUpdater gfwListUpdater;
-        public AvailabilityStatistics availabilityStatistics = AvailabilityStatistics.Instance;
-        public StatisticsStrategyConfiguration StatisticsConfiguration { get; private set; }
 
         private long _inboundCounter = 0;
         private long _outboundCounter = 0;
@@ -80,8 +76,6 @@ namespace Fuckshadows.Controller
         public FuckshadowsController()
         {
             _config = Configuration.Load();
-            StatisticsConfiguration = StatisticsStrategyConfiguration.Load();
-            _strategyManager = new StrategyManager(this);
             InitTrafficStatistics();
         }
 
@@ -112,30 +106,8 @@ namespace Fuckshadows.Controller
             return _config;
         }
 
-        public IList<IStrategy> GetStrategies()
+        public Server GetAServer(IPEndPoint localIPEndPoint, EndPoint destEndPoint)
         {
-            return _strategyManager.GetStrategies();
-        }
-
-        public IStrategy GetCurrentStrategy()
-        {
-            foreach (var strategy in _strategyManager.GetStrategies())
-            {
-                if (strategy.ID == this._config.strategy)
-                {
-                    return strategy;
-                }
-            }
-            return null;
-        }
-
-        public Server GetAServer(IStrategyCallerType type, IPEndPoint localIPEndPoint, EndPoint destEndPoint)
-        {
-            IStrategy strategy = GetCurrentStrategy();
-            if (strategy != null)
-            {
-                return strategy.GetAServer(type, localIPEndPoint, destEndPoint);
-            }
             if (_config.index < 0)
             {
                 _config.index = 0;
@@ -148,12 +120,6 @@ namespace Fuckshadows.Controller
             _config.configs = servers;
             _config.localPort = localPort;
             Configuration.Save(_config);
-        }
-
-        public void SaveStrategyConfigurations(StatisticsStrategyConfiguration configuration)
-        {
-            StatisticsConfiguration = configuration;
-            StatisticsStrategyConfiguration.Save(configuration);
         }
 
         public bool AddServerBySSURL(string ssURL)
@@ -208,14 +174,6 @@ namespace Fuckshadows.Controller
         public void SelectServerIndex(int index)
         {
             _config.index = index;
-            _config.strategy = null;
-            SaveConfig(_config);
-        }
-
-        public void SelectStrategy(string strategyID)
-        {
-            _config.index = -1;
-            _config.strategy = strategyID;
             SaveConfig(_config);
         }
 
@@ -275,14 +233,6 @@ namespace Fuckshadows.Controller
             }
         }
 
-        public void UpdateStatisticsConfiguration(bool enabled)
-        {
-            if (availabilityStatistics == null) return;
-            availabilityStatistics.UpdateConfiguration(this);
-            _config.availabilityStatistics = enabled;
-            SaveConfig(_config);
-        }
-
         public void SavePACUrl(string pacUrl)
         {
             _config.pacUrl = pacUrl;
@@ -333,30 +283,14 @@ namespace Fuckshadows.Controller
             ConfigChanged?.Invoke(this, new EventArgs());
         }
 
-        public void UpdateLatency(Server server, TimeSpan latency)
-        {
-            if (_config.availabilityStatistics)
-            {
-                availabilityStatistics.UpdateLatency(server, (int) latency.TotalMilliseconds);
-            }
-        }
-
         public void UpdateInboundCounter(Server server, long n)
         {
             Interlocked.Add(ref _inboundCounter, n);
-            if (_config.availabilityStatistics)
-            {
-                availabilityStatistics.UpdateInboundCounter(server, n);
-            }
         }
 
         public void UpdateOutboundCounter(Server server, long n)
         {
             Interlocked.Add(ref _outboundCounter, n);
-            if (_config.availabilityStatistics)
-            {
-                availabilityStatistics.UpdateOutboundCounter(server, n);
-            }
         }
 
         public void IncrementTCPConnectionCounter()
@@ -373,7 +307,6 @@ namespace Fuckshadows.Controller
         {
             // some logic in configuration updated the config when saving, we need to read it again
             _config = Configuration.Load();
-            StatisticsConfiguration = StatisticsStrategyConfiguration.Load();
 
             SaeaAwaitablePoolManager.Init();
             ReloadTrafficStatistics();
@@ -396,8 +329,6 @@ namespace Fuckshadows.Controller
                 gfwListUpdater.Error += pacServer_PACUpdateError;
             }
 
-            availabilityStatistics.UpdateConfiguration(this);
-
             _listener?.Stop();
             // don't put PrivoxyRunner.Start() before pacServer.Stop()
             // or bind will fail when switching bind address from 0.0.0.0 to 127.0.0.1
@@ -406,9 +337,6 @@ namespace Fuckshadows.Controller
             privoxyRunner.Stop();
             try
             {
-                var strategy = GetCurrentStrategy();
-                strategy?.ReloadServers();
-
                 privoxyRunner.Start(_config);
 
                 TCPRelay tcpRelay = new TCPRelay(this, _config);

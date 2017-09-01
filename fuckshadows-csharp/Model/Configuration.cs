@@ -11,8 +11,6 @@ namespace Fuckshadows.Model
     {
         public List<Server> configs;
 
-        // when strategy is set, index is ignored
-        public string strategy;
         public int index;
         public bool global;
         public bool enabled;
@@ -22,7 +20,6 @@ namespace Fuckshadows.Model
         public string pacUrl;
         public bool useOnlinePac;
         public bool secureLocalPac = true;
-        public bool availabilityStatistics;
         public bool autoCheckUpdate;
         public bool checkPreRelease;
         public bool isVerboseLogging;
@@ -60,7 +57,7 @@ namespace Fuckshadows.Model
                     config.configs.Add(GetDefaultServer());
                 if (config.localPort == 0)
                     config.localPort = 1080;
-                if (config.index == -1 && config.strategy == null)
+                if (config.index == -1)
                     config.index = 0;
                 if (config.logViewer == null)
                     config.logViewer = new LogViewerConfig();
@@ -95,7 +92,7 @@ namespace Fuckshadows.Model
                 config.index = config.configs.Count - 1;
             if (config.index < -1)
                 config.index = -1;
-            if (config.index == -1 && config.strategy == null)
+            if (config.index == -1)
                 config.index = 0;
             config.isDefault = false;
             try
