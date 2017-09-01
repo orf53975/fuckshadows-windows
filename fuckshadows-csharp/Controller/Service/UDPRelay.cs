@@ -23,7 +23,6 @@ namespace Fuckshadows.Controller
 
         private SaeaAwaitablePool _argsPool;
 
-        private const int UDPPacketLen = 1500;
         private const int UDP_HANDLER_NUM = 512;
 
         public UDPRelay(FuckshadowsController controller)
@@ -80,7 +79,7 @@ namespace Fuckshadows.Controller
 
             private SaeaAwaitablePool _argsPool;
 
-            private int _state;
+            private int _state = _none;
             private const int _none = 0;
             private const int _running = 1;
             private const int _disposed = 5;

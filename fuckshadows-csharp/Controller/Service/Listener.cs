@@ -23,7 +23,7 @@ namespace Fuckshadows.Controller
         public const int BACKLOG = 1024;
         private const int MaxFirstPacketLen = 4096;
 
-        private int _state;
+        private int _state = _none;
         private const int _none = 0;
         private const int _listening = 1;
         private const int _disposed = 5;

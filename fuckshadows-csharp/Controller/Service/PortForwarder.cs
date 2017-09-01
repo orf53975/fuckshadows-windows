@@ -58,9 +58,6 @@ namespace Fuckshadows.Controller
 
             private bool _remoteShutdown = false;
 
-            // instance-based lock
-            private readonly object _Lock = new object();
-
             private int _state = _none;
             private const int _none = 0;
             private const int _running = 1;

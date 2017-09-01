@@ -21,7 +21,7 @@ namespace Fuckshadows.Controller
         private DateTime _lastSweepTime;
         private Configuration _config;
         public SaeaAwaitablePool _argsPool;
-        public ISet<TCPHandler> Handlers { get; private set; }
+        public ISet<TCPHandler> Handlers { get; }
         public const int MAX_HANDLER_NUM = 4096;
 
         public const int CMD_CONNECT = 0x01;
@@ -169,10 +169,6 @@ namespace Fuckshadows.Controller
         private readonly object _encryptionLock = new object();
 
         private readonly object _decryptionLock = new object();
-
-        private DateTime _startConnectTime;
-        private DateTime _startReceivingTime;
-        private DateTime _startSendingTime;
 
         // parsed addr buf
         private EndPoint _destEndPoint = null;
@@ -510,7 +506,6 @@ namespace Fuckshadows.Controller
                 realSaea.RemoteEndPoint = SocketUtil.GetEndPoint(_server.server, _server.server_port);
                 realSaea.SetBuffer(0, encryptedbufLen);
 
-                _startConnectTime = DateTime.Now;
                 var err = await _serverSocket.ConnectAsync(serverSaea);
                 if (err != SocketError.Success)
                 {
@@ -535,8 +530,6 @@ namespace Fuckshadows.Controller
                 {
                     Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
                 }
-
-                _startReceivingTime = DateTime.Now;
 
                 Task.Factory.StartNew(StartPipe, TaskCreationOptions.PreferFairness).Forget();
             }
@@ -693,7 +686,6 @@ namespace Fuckshadows.Controller
                     _argsPool.Return(localRecvSaea);
                     localRecvSaea = null;
 
-                    _startSendingTime = DateTime.Now;
                     _tcprelay.UpdateOutboundCounter(_server, encBufLen);
 
                     token = await _serverSocket.FullSendTaskAsync(serverSendSaea, encBufLen);
