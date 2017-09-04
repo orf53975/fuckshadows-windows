@@ -272,7 +272,7 @@ namespace Fuckshadows.Encryption.AEAD
                 Debug.Assert(decChunkLenLength == CHUNK_LEN_BYTES);
                 // finally we get the real chunk len
                 ushort chunkLen = (ushort) IPAddress.NetworkToHostOrder((short)BitConverter.ToUInt16(decChunkLenBytes, 0));
-                if (chunkLen > CHUNK_LEN_MASK)
+                if (chunkLen <= 0 || chunkLen > CHUNK_LEN_MASK)
                 {
                     // we get invalid chunk
                     throw new CryptoErrorException($"Invalid chunk length: {chunkLen}");
@@ -354,8 +354,8 @@ namespace Fuckshadows.Encryption.AEAD
         private void ChunkEncrypt(byte[] plaintext, int plainLen, byte[] ciphertext, out int cipherLen)
         {
             // already take CHUNK_MAX_LEN_WITH_GARBAGE into account outside
-            if (plainLen > CHUNK_LEN_MASK) {
-                throw new CryptoErrorException("enc chunk too big");
+            if (plainLen <= 0 || plainLen > CHUNK_LEN_MASK) {
+                throw new CryptoErrorException($"invalid incoming chunk len: {plainLen}");
             }
 
             // encrypt len
