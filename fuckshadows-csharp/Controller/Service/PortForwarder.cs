@@ -123,8 +123,8 @@ namespace Fuckshadows.Controller
 
             private void StartPipe()
             {
-                Task.Factory.StartNew(async () => { await Upstream(); }, TaskCreationOptions.AttachedToParent);
-                Task.Factory.StartNew(async () => { await Downstream(); }, TaskCreationOptions.AttachedToParent);
+                Task.Factory.StartNew(async () => { await Upstream(); });
+                Task.Factory.StartNew(async () => { await Downstream(); });
             }
 
             private static bool IsShutdown(SocketExtensions.TcpTrafficToken token)
