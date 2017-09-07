@@ -47,7 +47,7 @@ namespace Fuckshadows.Util.Sockets
             if (OrdinaryInstance != null) return;
             OrdinaryInstance = new SaeaAwaitablePool();
             OrdinaryInstance.SetInitPoolSize(256);
-            OrdinaryInstance.SetMaxPoolSize(TCPRelay.MAX_HANDLER_NUM);
+            OrdinaryInstance.SetMaxPoolSize(8192);
             // XXX: max buffer size among all services
             OrdinaryInstance.SetEachBufSize(TCPRelay.BufferSize);
             OrdinaryInstance.FinishConfig();

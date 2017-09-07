@@ -355,6 +355,7 @@ namespace Fuckshadows.Controller
             // +-----+-----+-------+------+----------+----------+
             Logging.Debug("enter ParseAddrBuf");
             _addrBuf = buf.Skip(3).Take(bufLen - 3).ToArray();
+            Logging.Dump("Sock5RequestRecv recvBuf", buf, bufLen);
             Logging.Dump(nameof(_addrBuf), _addrBuf, _addrBuf.Length);
             int atyp = _addrBuf[0];
             string dstAddr = "Unknown";
@@ -393,11 +394,15 @@ namespace Fuckshadows.Controller
         private async Task HandleUDPAssociate()
         {
             IPEndPoint endPoint = (IPEndPoint) _localSocket.LocalEndPoint;
-            byte[] address = endPoint.Address.GetAddressBytes();
+            IPAddress endPointAddress = endPoint.Address;
+            if (endPointAddress.IsIPv4MappedToIPv6) {
+                endPointAddress = endPointAddress.MapToIPv4();
+            }
+            byte[] address = endPointAddress.GetAddressBytes();
             int port = endPoint.Port;
             byte[] response = new byte[4 + address.Length + ADDR_PORT_LEN];
             response[0] = 5;
-            switch (endPoint.AddressFamily)
+            switch (endPointAddress.AddressFamily)
             {
                 case AddressFamily.InterNetwork:
                     response[3] = ATYP_IPv4;
@@ -436,7 +441,18 @@ namespace Fuckshadows.Controller
                     token = await _localSocket.FullReceiveTaskAsync(circularRecvSaea, TCPRelay.RecvSize);
                     Logging.Debug($"udp assoc local recv: {err}");
                     var ret = token.SocketError;
-                    if (ret != SocketError.Success) return;
+                    var bytesRecved = token.BytesTotalTransferred;
+                    if (ret != SocketError.Success)
+                    {
+                        Logging.Error($"udp assoc: {ret},{bytesRecved}");
+                        Close();
+                        return;
+                    }
+                    if (bytesRecved <= 0)
+                    {
+                        Close();
+                        return;
+                    }
                     circularRecvSaea.ClearAndResetSaeaProperties();
                 }
                 _argsPool.Return(circularRecvSaea);

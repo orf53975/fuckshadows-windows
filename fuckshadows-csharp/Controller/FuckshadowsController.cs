@@ -466,8 +466,7 @@ namespace Fuckshadows.Controller
             trafficCancellationTokenSource = new CancellationTokenSource();
             try
             {
-                Task.Factory.StartNew(() => TrafficStatistics(1000, trafficCancellationTokenSource.Token),
-                    TaskCreationOptions.LongRunning).ConfigureAwait(false);
+                Task.Factory.StartNew(() => TrafficStatistics(1000, trafficCancellationTokenSource.Token)).ConfigureAwait(false);
             }
             catch (AggregateException ae)
             {

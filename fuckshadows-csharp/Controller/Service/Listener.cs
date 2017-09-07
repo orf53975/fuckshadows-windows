@@ -78,15 +78,19 @@ namespace Fuckshadows.Controller
             {
                 InitArgsPool();
                 // Create a TCP/IP socket.
-                _tcpListenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                _udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                // XXX: this constructor will create a IPv6 socket with dual mode enabled
+                _tcpListenerSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 _tcpListenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _tcpListenerSocket.SetTFO();
+
+                _udpSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
                 _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+                // still listening on v4 addr, we will get v4 mapped v6 addr
                 IPEndPoint localEndPoint = _shareOverLan
                     ? new IPEndPoint(IPAddress.Any, _config.localPort)
                     : new IPEndPoint(IPAddress.Loopback, _config.localPort);
 
-                _tcpListenerSocket.SetTFO();
                 // Bind the socket to the local endpoint and listen for incoming connections.
                 _tcpListenerSocket.Bind(localEndPoint);
                 _udpSocket.Bind(localEndPoint);
@@ -119,14 +123,19 @@ namespace Fuckshadows.Controller
                     var err = await _udpSocket.ReceiveFromAsync(udpSaea);
                     var saea = udpSaea.Saea;
                     var bytesRecved = saea.BytesTransferred;
-                    ServiceUserToken token = new ServiceUserToken();
+                    
                     if (err == SocketError.Success && bytesRecved > 0)
                     {
-                        token.socket = _udpSocket;
-                        token.firstPacket = new byte[bytesRecved];
-                        token.firstPacketLength = bytesRecved;
-                        token.remoteEndPoint = saea.RemoteEndPoint;
+                        ServiceUserToken token = new ServiceUserToken
+                        {
+                            socket = _udpSocket,
+                            firstPacket = new byte[bytesRecved],
+                            firstPacketLength = bytesRecved,
+                            remoteEndPoint = saea.RemoteEndPoint
+                        };
                         Buffer.BlockCopy(saea.Buffer, 0, token.firstPacket, 0, bytesRecved);
+
+                        Task.Factory.StartNew(() => HandleUDPServices(token)).Forget();
                     }
                     else
                     {
@@ -134,14 +143,6 @@ namespace Fuckshadows.Controller
                     }
                     _argsPool.Return(udpSaea);
                     udpSaea = null;
-
-                    foreach (IService service in _services)
-                    {
-                        if (service.Handle(token))
-                        {
-                            return;
-                        }
-                    }
                 }
             }
             catch (Exception e)
@@ -152,6 +153,17 @@ namespace Fuckshadows.Controller
             {
                 _argsPool.Return(udpSaea);
                 udpSaea = null;
+            }
+        }
+
+        private void HandleUDPServices(ServiceUserToken token)
+        {
+            foreach (IService service in _services)
+            {
+                if (service.Handle(token))
+                {
+                    return;
+                }
             }
         }
 

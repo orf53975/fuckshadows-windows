@@ -33,7 +33,8 @@ namespace Fuckshadows.Util.Sockets
             }
 
             // maybe is a domain name
-            return new DnsEndPoint2(host, port);
+            // https://blogs.msdn.microsoft.com/webdev/2013/01/08/dual-mode-sockets-never-create-an-ipv4-socket-again/
+            return new DnsEndPoint2(host, port, AddressFamily.Unspecified);
         }
 
 

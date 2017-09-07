@@ -59,8 +59,7 @@ namespace Fuckshadows.Controller
                     remoteEndPoint, _argsPool);
                 _cache.add(remoteEndPoint, handler);
             }
-            Task.Factory.StartNew(async () => { await handler.Start(firstPacket, length); },
-                TaskCreationOptions.LongRunning);
+            Task.Factory.StartNew(async () => { await handler.Start(firstPacket, length); }).Forget();
             return true;
         }
 
@@ -70,12 +69,12 @@ namespace Fuckshadows.Controller
 
         public class UDPHandler
         {
-            private Socket _local;
-            private Socket _remote;
+            private Socket _localSocket;
+            private Socket _serverSocket;
 
             private Server _server;
             private EndPoint _localEndPoint;
-            private EndPoint _remoteEndPoint;
+            private EndPoint _serverEndPoint;
 
             private SaeaAwaitablePool _argsPool;
 
@@ -88,72 +87,77 @@ namespace Fuckshadows.Controller
 
             public UDPHandler(Socket local, Server server, EndPoint localEndPoint, SaeaAwaitablePool pool)
             {
-                _local = local;
+                _localSocket = local;
                 _server = server;
                 _localEndPoint = localEndPoint;
                 _argsPool = pool;
-                _remoteEndPoint = SocketUtil.GetEndPoint(server.server, server.server_port);
-                _remote = new Socket(_remoteEndPoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+                _serverEndPoint = SocketUtil.GetEndPoint(server.server, server.server_port);
+                _serverSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
             }
 
             public async Task Start(byte[] data, int length)
             {
                 Interlocked.Exchange(ref _state, _running);
-                SaeaAwaitable udpSaea = null;
+                SaeaAwaitable upSaea = null;
+                SaeaAwaitable downSaea = null;
                 try
                 {
+                    Logging.Debug($"-----UDP relay got {length}-----");
+                    IEncryptor encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
+                    byte[] dataIn = new byte[length - 3];
+                    Array.Copy(data, 3, dataIn, 0, length - 3);
+
+                    upSaea = _argsPool.Rent();
+                    int outlen;
+                    encryptor.EncryptUDP(dataIn, dataIn.Length, upSaea.Saea.Buffer, out outlen);
+                    upSaea.Saea.SetBuffer(0, outlen);
+                    upSaea.Saea.RemoteEndPoint = _serverEndPoint;
+                    
+                    var ret = await _serverSocket.SendToAsync(upSaea);
+                    if (ret != SocketError.Success)
+                    {
+                        Logging.Error($"[udp] remote sendto {ret},{upSaea.Saea.BytesTransferred}");
+                        Close();
+                        return;
+                    }
+                    Logging.Debug($"[udp] remote sendto {_localEndPoint} -> {_serverEndPoint} {upSaea.Saea.BytesTransferred}");
+
+                    _argsPool.Return(upSaea);
+                    upSaea = null;
+
                     while (IsRunning)
                     {
-                        IEncryptor encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
-                        byte[] dataIn = new byte[length - 3];
-                        Array.Copy(data, 3, dataIn, 0, length - 3);
-                        udpSaea = _argsPool.Rent();
-
-                        int outlen;
-                        encryptor.EncryptUDP(dataIn, length - 3, udpSaea.Saea.Buffer, out outlen);
-                        udpSaea.Saea.SetBuffer(0, outlen);
-                        udpSaea.Saea.RemoteEndPoint = _remoteEndPoint;
-
-                        Logging.Debug(_localEndPoint, _remoteEndPoint, outlen, "UDP Relay");
-                        var ret = await _remote.SendToAsync(udpSaea);
+                        downSaea = _argsPool.Rent();
+                        downSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                        ret = await _serverSocket.ReceiveFromAsync(downSaea);
+                        var bytesReceived = downSaea.Saea.BytesTransferred;
                         if (ret != SocketError.Success)
                         {
+                            Logging.Error($"[udp] remote recvfrom {ret},{bytesReceived}");
                             Close();
                             return;
                         }
-                        udpSaea = _argsPool.Rent();
-                        udpSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-                        ret = await _remote.ReceiveFromAsync(udpSaea);
-                        if (ret != SocketError.Success)
-                        {
-                            Close();
-                            return;
-                        }
-                        var bytesReceived = udpSaea.Saea.BytesTransferred;
-                        Logging.Debug($"++++++Receive Server Port, size:" + bytesReceived);
-
-
+                        Logging.Debug($"[udp] remote recvfrom {downSaea.Saea.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
                         byte[] dataOut = new byte[bytesReceived];
                         encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
-                        encryptor.DecryptUDP(udpSaea.Saea.Buffer, bytesReceived, dataOut, out outlen);
-                        _argsPool.Return(udpSaea);
-                        udpSaea = null;
-
-                        udpSaea = _argsPool.Rent();
-                        byte[] buf = udpSaea.Saea.Buffer;
+                        encryptor.DecryptUDP(downSaea.Saea.Buffer, bytesReceived, dataOut, out outlen);
+                        downSaea.ClearAndResetSaeaProperties();
+                        
+                        byte[] buf = downSaea.Saea.Buffer;
                         buf[0] = buf[1] = buf[2] = 0;
                         Array.Copy(dataOut, 0, buf, 3, outlen);
-                        udpSaea.Saea.RemoteEndPoint = _localEndPoint;
-                        udpSaea.Saea.SetBuffer(0, outlen + 3);
-                        Logging.Debug(_localEndPoint, _remoteEndPoint, outlen, "UDP Relay");
-                        ret = await _local.SendToAsync(udpSaea);
+                        downSaea.Saea.RemoteEndPoint = _localEndPoint;
+                        downSaea.Saea.SetBuffer(0, outlen + 3);
+                        ret = await _localSocket.SendToAsync(downSaea);
                         if (ret != SocketError.Success)
                         {
+                            Logging.Error($"[udp] local sendto {ret},{downSaea.Saea.BytesTransferred}");
                             Close();
                             return;
                         }
-                        _argsPool.Return(udpSaea);
-                        udpSaea = null;
+                        Logging.Debug($"[udp] local sendto {_localSocket.LocalEndPoint} -> {_localEndPoint} {downSaea.Saea.BytesTransferred}");
+                        _argsPool.Return(downSaea);
+                        downSaea = null;
                     }
                 }
                 catch (Exception e)
@@ -163,8 +167,10 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(udpSaea);
-                    udpSaea = null;
+                    _argsPool.Return(upSaea);
+                    upSaea = null;
+                    _argsPool.Return(downSaea);
+                    downSaea = null;
                 }
             }
 
@@ -172,9 +178,10 @@ namespace Fuckshadows.Controller
             {
                 int origin = Interlocked.Exchange(ref _state, _disposed);
                 if (origin == _disposed) return;
+                Logging.Debug("[udp] Closing remote socket");
                 try
                 {
-                    _remote?.Close();
+                    _serverSocket.Close();
                 }
                 catch (Exception ex)
                 {

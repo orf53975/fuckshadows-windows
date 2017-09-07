@@ -82,25 +82,6 @@ namespace Fuckshadows.Controller
             Debug(sb.ToString());
         }
 
-        [Conditional("DEBUG")]
-        public static void Debug(EndPoint local, EndPoint remote, int len, string header = null, string tailer = null)
-        {
-            if (header == null && tailer == null)
-                Debug($"{local} => {remote} (size={len})");
-            else if (header == null)
-                Debug($"{local} => {remote} (size={len}), {tailer}");
-            else if (tailer == null)
-                Debug($"{header}: {local} => {remote} (size={len})");
-            else
-                Debug($"{header}: {local} => {remote} (size={len}), {tailer}");
-        }
-
-        [Conditional("DEBUG")]
-        public static void Debug(Socket sock, int len, string header = null, string tailer = null)
-        {
-            Debug(sock.LocalEndPoint, sock.RemoteEndPoint, len, header, tailer);
-        }
-
         public static void LogUsefulException(Exception e)
         {
             // just log useful exceptions, not all of them

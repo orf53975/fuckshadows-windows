@@ -77,7 +77,7 @@ namespace Fuckshadows.Controller
                 try
                 {
                     // Connect to the remote endpoint.
-                    _remote = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    _remote = new Socket(SocketType.Stream, ProtocolType.Tcp);
                     _remote.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
                     Task.Factory.StartNew(async () => { await StartConnect(targetPort); },
