@@ -226,7 +226,7 @@ namespace Fuckshadows.View
             }
 
             this.Text = I18N.GetString("Log Viewer") +
-                        $" [in: {Utils.FormatBytes(controller.InboundCounter)}, out: {Utils.FormatBytes(controller.OutboundCounter)}, TCP conn: {controller.TCPConnectionCounter}/{TCPRelay.MAX_HANDLER_NUM}]";
+                        $" [in: {Utils.FormatBytes(controller.InboundCounter)}, out: {Utils.FormatBytes(controller.OutboundCounter)}, TCP conn: {controller.TCPConnectionCounter}]";
         }
 
         private void LogForm_Load(object sender, EventArgs e)
