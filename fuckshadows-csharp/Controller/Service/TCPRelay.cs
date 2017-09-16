@@ -505,7 +505,10 @@ namespace Fuckshadows.Controller
 
                 var encryptedbufLen = -1;
                 Logging.Dump("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
-                DoEncrypt(_addrBuf, _addrBufLength, realSaea.Buffer, out encryptedbufLen);
+                lock (_encryptionLock)
+                {
+                    _encryptor.Encrypt(_addrBuf, _addrBufLength, realSaea.Buffer, out encryptedbufLen);
+                }
                 Logging.Debug("StartConnect(): addrBuf enc len " + encryptedbufLen);
                 if (_remainingBytesLen > 0)
                 {
@@ -513,7 +516,10 @@ namespace Fuckshadows.Controller
                     var encRemainingBufLen = -1;
                     byte[] tmp = new byte[4096];
                     Logging.Dump("StartConnect(): enc remaining", _remainingBytes, _remainingBytesLen);
-                    DoEncrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
+                    lock (_encryptionLock)
+                    {
+                        _encryptor.Encrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
+                    }
                     Logging.Debug("StartConnect(): remaining enc len " + encRemainingBufLen);
                     Buffer.BlockCopy(tmp, 0, realSaea.Buffer, encryptedbufLen, encRemainingBufLen);
                     encryptedbufLen += encRemainingBufLen;
@@ -614,7 +620,7 @@ namespace Fuckshadows.Controller
                     int decBufLen = -1;
                     lock (_decryptionLock)
                     {
-                        DoDecrypt(serverRecvSaea.Saea.Buffer,
+                        _encryptor.Decrypt(serverRecvSaea.Saea.Buffer,
                             bytesRecved,
                             localSendSaea.Saea.Buffer,
                             out decBufLen);
@@ -694,7 +700,7 @@ namespace Fuckshadows.Controller
                     int encBufLen = -1;
                     lock (_encryptionLock)
                     {
-                        DoEncrypt(localRecvSaea.Saea.Buffer,
+                        _encryptor.Encrypt(localRecvSaea.Saea.Buffer,
                             bytesRecved,
                             serverSendSaea.Saea.Buffer,
                             out encBufLen);
@@ -746,40 +752,6 @@ namespace Fuckshadows.Controller
             var bytesTransferred = token.BytesTotalTransferred;
             return err == SocketError.Success && bytesTransferred <= 0;
         }
-
-        #region Enc/Dec Worker
-
-        private void DoEncrypt(byte[] inBuf, int inLen, byte[] outBuf, out int outLen)
-        {
-            int bytesOut = -1;
-            try
-            {
-                _encryptor.Encrypt(inBuf, inLen, outBuf, out bytesOut);
-            }
-            catch (CryptoErrorException)
-            {
-                Logging.Debug("encryption error");
-                throw;
-            }
-            outLen = bytesOut;
-        }
-
-        private void DoDecrypt(byte[] inBuf, int inLen, byte[] outBuf, out int outLen)
-        {
-            int bytesOut = -1;
-            try
-            {
-                _encryptor.Decrypt(inBuf, inLen, outBuf, out bytesOut);
-            }
-            catch (CryptoErrorException e)
-            {
-                Logging.LogUsefulException(e);
-                throw;
-            }
-            outLen = bytesOut;
-        }
-
-        #endregion
 
         #region Close Connection
 
