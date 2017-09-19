@@ -58,7 +58,6 @@ namespace Fuckshadows.Encryption.AEAD
         protected byte[] _encryptSalt;
         protected byte[] _decryptSalt;
 
-        protected object _nonceIncrementLock = new object();
         protected byte[] _encNonce;
         protected byte[] _decNonce;
         // Is first packet
@@ -126,9 +125,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         protected void IncrementNonce(bool isEncrypt)
         {
-            lock (_nonceIncrementLock) {
-                Sodium.sodium_increment(isEncrypt ? _encNonce : _decNonce, nonceLen);
-            }
+            Sodium.sodium_increment(isEncrypt ? _encNonce : _decNonce, nonceLen);
         }
 
         public virtual void InitCipher(byte[] salt, bool isEncrypt, bool isUdp)
