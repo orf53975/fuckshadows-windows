@@ -17,48 +17,26 @@ namespace Fuckshadows.Controller
         private const string UserAgent =
             "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36";
 
-        private Configuration config;
+        private Configuration _config;
         public bool NewVersionFound;
         public string LatestVersionNumber;
         public string LatestVersionSuffix;
-        public string LatestVersionName;
-        public string LatestVersionURL;
+        private string _latestVersionName;
+        private string _latestVersionUrl;
         public string LatestVersionLocalName;
         public event EventHandler CheckUpdateCompleted;
 
         public const string Version = "30.0";
 
-        private class CheckUpdateTimer : System.Timers.Timer
+        public async Task CheckUpdate(Configuration config, TimeSpan span)
         {
-            public Configuration config;
-
-            public CheckUpdateTimer(int p) : base(p)
-            {
-            }
-        }
-
-        public void CheckUpdate(Configuration config, int delay)
-        {
-            CheckUpdateTimer timer = new CheckUpdateTimer(delay);
-            timer.AutoReset = false;
-            timer.Elapsed += Timer_Elapsed;
-            timer.config = config;
-            timer.Enabled = true;
-        }
-
-        private void Timer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
-        {
-            CheckUpdateTimer timer = (CheckUpdateTimer) sender;
-            Configuration config = timer.config;
-            timer.Elapsed -= Timer_Elapsed;
-            timer.Enabled = false;
-            timer.Dispose();
-            Task.Factory.StartNew(() => CheckUpdate(config));
+            await Task.Delay(span);
+            Task.Factory.StartNew(async () => await CheckUpdate(config)).Forget();
         }
 
         public async Task CheckUpdate(Configuration config)
         {
-            this.config = config;
+            this._config = config;
 
             Logging.Debug("Checking updates...");
             try
@@ -96,20 +74,17 @@ namespace Fuckshadows.Controller
                     SortByVersions(asserts);
                     Asset asset = asserts[asserts.Count - 1];
                     NewVersionFound = true;
-                    LatestVersionURL = asset.browser_download_url;
+                    _latestVersionUrl = asset.browser_download_url;
                     LatestVersionNumber = asset.version;
-                    LatestVersionName = asset.name;
+                    _latestVersionName = asset.name;
                     LatestVersionSuffix = asset.suffix == null ? "" : $"-{asset.suffix}";
 
-                    Task.Factory.StartNew(async () => { await StartDownload(); }).Forget();
+                    Task.Factory.StartNew(async () => await StartDownload()).Forget();
                 }
                 else
                 {
                     Logging.Debug("No update is available");
-                    if (CheckUpdateCompleted != null)
-                    {
-                        CheckUpdateCompleted(this, new EventArgs());
-                    }
+                    CheckUpdateCompleted?.Invoke(this, new EventArgs());
                 }
             }
             catch (Exception e)
@@ -137,7 +112,7 @@ namespace Fuckshadows.Controller
 
         private Task<bool> WebClientDownloadFileTaskAsync()
         {
-            LatestVersionLocalName = Utils.GetTempPath(LatestVersionName);
+            LatestVersionLocalName = Utils.GetTempPath(_latestVersionName);
             var tcs = new TaskCompletionSource<bool>();
             var wc = CreateWebClient();
             wc.DownloadFileCompleted += (s, e) =>
@@ -149,7 +124,7 @@ namespace Fuckshadows.Controller
                 else
                     tcs.TrySetResult(true);
             };
-            wc.DownloadFileAsync(new Uri(LatestVersionURL), LatestVersionLocalName);
+            wc.DownloadFileAsync(new Uri(_latestVersionUrl), LatestVersionLocalName);
             return tcs.Task;
         }
 
@@ -161,10 +136,7 @@ namespace Fuckshadows.Controller
 
                 Logging.Debug(
                     $"New version {LatestVersionNumber}{LatestVersionSuffix} found: {LatestVersionLocalName}");
-                if (CheckUpdateCompleted != null)
-                {
-                    CheckUpdateCompleted(this, new EventArgs());
-                }
+                CheckUpdateCompleted?.Invoke(this, new EventArgs());
             }
             catch (Exception ex)
             {
@@ -176,7 +148,7 @@ namespace Fuckshadows.Controller
         {
             WebClient http = new WebClient();
             http.Headers.Add("User-Agent", UserAgent);
-            http.Proxy = new WebProxy(IPAddress.Loopback.ToString(), config.localPort);
+            http.Proxy = new WebProxy(IPAddress.Loopback.ToString(), _config.localPort);
             return http;
         }
 

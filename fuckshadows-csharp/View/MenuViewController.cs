@@ -98,7 +98,7 @@ namespace Fuckshadows.View
             else if (config.autoCheckUpdate)
             {
                 _isStartupChecking = true;
-                updateChecker.CheckUpdate(config, 3000);
+                Task.Factory.StartNew(async () => await updateChecker.CheckUpdate(config, TimeSpan.FromSeconds(3)));
             }
         }
 
@@ -541,7 +541,7 @@ namespace Fuckshadows.View
             Configuration config = controller.GetConfigurationCopy();
             if (config.isDefault) return;
             _isStartupChecking = true;
-            updateChecker.CheckUpdate(config, 3000);
+            Task.Factory.StartNew(async () => await updateChecker.CheckUpdate(config, TimeSpan.FromSeconds(3)));
         }
 
         private void ShowFirstTimeBalloon()
@@ -838,7 +838,7 @@ namespace Fuckshadows.View
 
         private void checkUpdatesItem_Click(object sender, EventArgs e)
         {
-            Task.Factory.StartNew(async () => { await updateChecker.CheckUpdate(controller.GetConfigurationCopy()); });
+            Task.Factory.StartNew(async () => await updateChecker.CheckUpdate(controller.GetConfigurationCopy()));
         }
 
         private void hotKeyItem_Click(object sender, EventArgs e)
