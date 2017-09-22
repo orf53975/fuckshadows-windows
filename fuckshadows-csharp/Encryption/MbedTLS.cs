@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security;
 using Fuckshadows.Controller;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
@@ -49,6 +50,7 @@ namespace Fuckshadows.Encryption
         [DllImport("Kernel32.dll")]
         private static extern IntPtr LoadLibrary(string path);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void md5(byte[] input, uint ilen, byte[] output);
 
@@ -56,36 +58,46 @@ namespace Fuckshadows.Encryption
         /// Get cipher ctx size for unmanaged memory allocation
         /// </summary>
         /// <returns></returns>
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_get_size_ex();
 
         #region Cipher layer wrappers
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr cipher_info_from_string(string cipher_name);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void cipher_init(IntPtr ctx);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_setup(IntPtr ctx, IntPtr cipher_info);
 
         // XXX: Check operation before using it
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_setkey(IntPtr ctx, byte[] key, int key_bitlen, int operation);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_set_iv(IntPtr ctx, byte[] iv, int iv_len);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_reset(IntPtr ctx);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_update(IntPtr ctx, byte[] input, int ilen, byte[] output, ref int olen);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void cipher_free(IntPtr ctx);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_auth_encrypt(IntPtr ctx,
             byte[] iv, uint iv_len,
@@ -94,6 +106,7 @@ namespace Fuckshadows.Encryption
             byte[] output, ref uint olen,
             byte[] tag, uint tag_len);
 
+        [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cipher_auth_decrypt(IntPtr ctx,
             byte[] iv, uint iv_len,
