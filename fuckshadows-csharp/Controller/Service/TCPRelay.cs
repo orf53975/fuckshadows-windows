@@ -43,10 +43,12 @@ namespace Fuckshadows.Controller
         //+----+-----+-------+------+----------+----------+
         public static readonly byte[] Sock5ConnectRequestReplySuccess = {5, 0, 0, ATYP_IPv4, 0, 0, 0, 0, 0, 0};
 
-        // IMPORTANT: choose RecvSize and BufferSize carefully, make sure AEAD and stream ciphers both work well
+        // max size for single receive operation
         public const int RecvSize = 4096;
 
-        public const int BufferSize = RecvSize + (int) AEADEncryptor.MaxChunkSize + 32 /* max salt len */;
+        // IMPORTANT: choose size carefully, make sure AEAD and stream ciphers both work well
+        //            and we have enough space to handle chunks
+        public const int BufferSize = 5 * (RecvSize + (int) AEADEncryptor.MaxChunkSize + 32 /* max salt len */);
 
         public TCPRelay(FuckshadowsController controller, Configuration conf)
         {

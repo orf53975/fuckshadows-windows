@@ -208,11 +208,6 @@ namespace Fuckshadows.Encryption.AEAD
                 PerfByteCopy(encChunkBytes, 0, outbuf, outlength, encChunkLength);
                 outlength += encChunkLength;
                 Logging.Debug("chunks enc outlength " + outlength);
-                // check if we have enough space for outbuf
-                if (outlength + ChunkOverheadSize > TCPRelay.BufferSize) {
-                    Logging.Debug("enc outbuf almost full, giving up");
-                    return;
-                }
                 bufSize = (uint)_encCircularBuffer.Size;
                 if (bufSize <= 0) {
                     Logging.Debug("No more data to encrypt, leaving");
@@ -300,11 +295,6 @@ namespace Fuckshadows.Encryption.AEAD
                 PerfByteCopy(decChunkBytes, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
                 outlength += (int)decChunkLen - garbageLen;
                 Logging.Debug("aead dec outlength " + outlength);
-                if (outlength + 100 > TCPRelay.BufferSize)
-                {
-                    Logging.Debug("dec outbuf almost full, giving up");
-                    return;
-                }
                 bufSize = _decCircularBuffer.Size;
                 // check if we already done all of them
                 if (bufSize <= 0) {
