@@ -26,7 +26,7 @@ namespace Fuckshadows.Controller
         public string LatestVersionLocalName;
         public event EventHandler CheckUpdateCompleted;
 
-        public const string Version = "30.0";
+        public const string Version = "30.0.0.0";
 
         public async Task CheckUpdate(Configuration config, TimeSpan span)
         {
