@@ -19,7 +19,7 @@ namespace Fuckshadows.Properties {
     // 类通过类似于 ResGen 或 Visual Studio 的工具自动生成的。
     // 若要添加或移除成员，请编辑 .ResX 文件，然后重新运行 ResGen
     // (以 /str 作为命令选项)，或重新生成 VS 项目。
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Resources {
@@ -83,7 +83,6 @@ namespace Fuckshadows.Properties {
         ///Global=全局模式
         ///Servers=服务器
         ///Edit Servers...=编辑服务器...
-        ///Statistics Config...=统计配置...
         ///Start on Boot=开机启动
         ///Allow Clients from LAN=允许来自局域网的连接
         ///Local PAC=使用本地 PAC
@@ -92,7 +91,8 @@ namespace Fuckshadows.Properties {
         ///Update Local PAC from GFWList=从 GFWList 更新本地 PAC
         ///Edit User Rule for GFWList...=编辑 GFWList 的用户规则...
         ///Secure Local PAC=保护本地 PAC
-        ///Copy Local PAC URL=复制本地 PAC 网址        /// [字符串的其余部分被截断]&quot;; 的本地化字符串。
+        ///Copy Local PAC URL=复制本地 PAC 网址
+        ///Share Server Config...=分享服务器配 [字符串的其余部分被截断]&quot;; 的本地化字符串。
         /// </summary>
         internal static string cn {
             get {
@@ -270,7 +270,6 @@ namespace Fuckshadows.Properties {
         ///Global=全局模式
         ///Servers=伺服器
         ///Edit Servers...=編輯伺服器...
-        ///Statistics Config...=統計設定檔...
         ///Start on Boot=開機啟動
         ///Allow Clients from LAN=允許來自區域網路的連線
         ///Local PAC=使用本機 PAC
@@ -280,7 +279,8 @@ namespace Fuckshadows.Properties {
         ///Edit User Rule for GFWList...=編輯 GFWList 的使用者規則...
         ///Secure Local PAC=安全本機 PAC
         ///Copy Local PAC URL=複製本機 PAC 網址
-        ///Share Server Conf [字符串的其余部分被截断]&quot;; 的本地化字符串。
+        ///Share Server Config...=分享伺服器設定檔...
+        ///Scan QRCode  [字符串的其余部分被截断]&quot;; 的本地化字符串。
         /// </summary>
         internal static string zh_tw {
             get {
