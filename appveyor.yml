@@ -15,11 +15,8 @@ matrix:
 nuget:
   project_feed: true
 before_build:
-- cmd: >-
-    nuget restore
-
-    install-devpack.cmd
-
+  - cmd: nuget restore
+  # - cmd: install-devpack.cmd
 build:
   parallel: true
   verbosity: normal
