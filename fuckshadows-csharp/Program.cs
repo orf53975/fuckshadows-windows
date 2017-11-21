@@ -36,7 +36,6 @@ namespace Fuckshadows
                 // handle unobserved Task exceptions
                 TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
                 Application.ApplicationExit += Application_ApplicationExit;
-                SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
@@ -104,62 +103,6 @@ namespace Fuckshadows
             }
         }
 
-        private static void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e)
-        {
-            switch (e.Mode)
-            {
-                case PowerModes.Resume:
-                    Logging.Info("os wake up");
-                    if (MainController != null)
-                    {
-                        System.Timers.Timer timer = new System.Timers.Timer(10 * 1000);
-                        timer.Elapsed += Timer_Elapsed;
-                        timer.AutoReset = false;
-                        timer.Enabled = true;
-                        timer.Start();
-                    }
-                    break;
-                case PowerModes.Suspend:
-                    if (MainController != null)
-                    {
-                        MainController.Stop();
-                        Logging.Info("controller stopped");
-                    }
-                    Logging.Info("os suspend");
-                    break;
-            }
-        }
-
-        private static void Timer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
-        {
-            try
-            {
-                if (MainController != null)
-                {
-                    MainController.Start();
-                    Logging.Info("controller started");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logging.LogUsefulException(ex);
-            }
-            finally
-            {
-                try
-                {
-                    System.Timers.Timer timer = (System.Timers.Timer) sender;
-                    timer.Enabled = false;
-                    timer.Stop();
-                    timer.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Logging.LogUsefulException(ex);
-                }
-            }
-        }
-
         private static void TaskScheduler_UnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
         {
             if (Interlocked.Increment(ref exited) == 1)
@@ -182,7 +125,6 @@ namespace Fuckshadows
         {
             // detach static event handlers
             Application.ApplicationExit -= Application_ApplicationExit;
-            SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
             Application.ThreadException -= Application_ThreadException;
             TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             HotKeys.Destroy();
