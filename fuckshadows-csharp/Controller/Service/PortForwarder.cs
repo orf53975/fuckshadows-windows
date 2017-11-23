@@ -127,13 +127,6 @@ namespace Fuckshadows.Controller
                 Task.Factory.StartNew(async () => { await Downstream(); });
             }
 
-            private static bool IsShutdown(SocketExtensions.TcpTrafficToken token)
-            {
-                var err = token.SocketError;
-                var bytesTransferred = token.BytesTotalTransferred;
-                return err == SocketError.Success && bytesTransferred <= 0;
-            }
-
             // server recv -> local send
             private async Task Downstream()
             {
@@ -149,14 +142,11 @@ namespace Fuckshadows.Controller
                         var bytesRecved = token.BytesTotalTransferred;
                         Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
 
-                        if (IsShutdown(token))
+                        if (err == SocketError.Success && bytesRecved <= 0)
                         {
-                            //lock (_closeConnLock)
-                            //{
                             _local.Shutdown(SocketShutdown.Send);
                             _localShutdown = true;
                             CheckClose();
-                            //}
                             return;
                         }
                         if (err != SocketError.Success)
@@ -224,14 +214,11 @@ namespace Fuckshadows.Controller
                         var err = token.SocketError;
                         var bytesRecved = token.BytesTotalTransferred;
                         Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
-                        if (IsShutdown(token))
+                        if (err == SocketError.Success && bytesRecved <= 0)
                         {
-                            //lock (_closeConnLock)
-                            //{
                             _remote.Shutdown(SocketShutdown.Send);
                             _remoteShutdown = true;
                             CheckClose();
-                            //}
                             return;
                         }
                         if (err != SocketError.Success)
