@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fuckshadows.Encryption;
 using Fuckshadows.Encryption.AEAD;
-using Fuckshadows.Encryption.Exception;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 using static Fuckshadows.Encryption.EncryptorBase;
@@ -22,7 +21,6 @@ namespace Fuckshadows.Controller
         private Configuration _config;
         public SaeaAwaitablePool _argsPool;
         public ISet<TCPHandler> Handlers { get; }
-        public const int MAX_HANDLER_NUM = 4096;
 
         public const int CMD_CONNECT = 0x01;
         public const int CMD_UDP_ASSOC = 0x03;

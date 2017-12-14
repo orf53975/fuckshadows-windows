@@ -140,7 +140,7 @@ namespace Fuckshadows.Util.Sockets
 
         /// <summary>
         /// Full receive from <see cref="Socket"/> until no data available 
-        /// or reaches <see cref="SocketAsyncEventArgs.Count"/>
+        /// or reaches <see cref="intendedRecvSize"/>
         /// </summary>
         /// <exception cref="ArgumentNullException">
         /// Null <see cref="Socket"/>
@@ -150,7 +150,7 @@ namespace Fuckshadows.Util.Sockets
             if (socket == null) throw new ArgumentNullException(nameof(socket));
             if (awaitable == null) throw new ArgumentNullException(nameof(awaitable));
             int bytesReceived = 0;
-            SocketError err = SocketError.SocketError;
+            SocketError err;
             awaitable.Saea.SetBuffer(0, intendedRecvSize);
             while (true) {
                 err = await socket.ReceiveAsync(awaitable);
@@ -159,7 +159,6 @@ namespace Fuckshadows.Util.Sockets
                 Interlocked.Add(ref bytesReceived, awaitable.Saea.BytesTransferred);
                 if (socket.Available <= 0) break;
                 if (bytesReceived >= intendedRecvSize) break;
-                if (intendedRecvSize - bytesReceived == 0) break;
                 awaitable.Saea.SetBuffer(awaitable.Saea.Offset + awaitable.Saea.BytesTransferred,
                                          awaitable.Saea.Count - awaitable.Saea.BytesTransferred);
             }

@@ -211,20 +211,23 @@ namespace Fuckshadows.Controller
                 arg = _argsPool.Rent();
                 var token = await clientSocket.FullReceiveTaskAsync(arg, MaxFirstPacketLen);
                 var err = token.SocketError;
-                var serviceToken = new ServiceUserToken();
+                ServiceUserToken serviceToken = null;
                 var bytesReceived = token.BytesTotalTransferred;
                 Logging.Debug($"RecvFirstPacket: {err},{bytesReceived}");
                 if (err == SocketError.Success && bytesReceived > 0)
                 {
-                    serviceToken.socket = clientSocket;
-                    serviceToken.firstPacket = new byte[bytesReceived];
+                    serviceToken = new ServiceUserToken
+                    {
+                        socket = clientSocket,
+                        firstPacket = new byte[bytesReceived],
+                        firstPacketLength = bytesReceived
+                    };
                     Buffer.BlockCopy(arg.Saea.Buffer, 0, serviceToken.firstPacket, 0, bytesReceived);
-                    serviceToken.firstPacketLength = bytesReceived;
                 }
                 else
                 {
                     Logging.Error($"RecvFirstPacket socket err: {err},{bytesReceived}");
-                    goto Error;
+                    goto Shutdown;
                 }
                 _argsPool.Return(arg);
                 arg = null;
@@ -236,7 +239,7 @@ namespace Fuckshadows.Controller
                         return;
                     }
                 }
-                Error:
+                Shutdown:
                 // no service found for this
                 if (clientSocket.ProtocolType == ProtocolType.Tcp)
                 {
