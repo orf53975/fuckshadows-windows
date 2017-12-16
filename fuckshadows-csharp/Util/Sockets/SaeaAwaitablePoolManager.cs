@@ -32,7 +32,7 @@ namespace Fuckshadows.Util.Sockets
             if (AcceptOnlyInstance != null) return;
             //accept args pool don't need buffer
             AcceptOnlyInstance = new SaeaAwaitablePool();
-            AcceptOnlyInstance.SetInitPoolSize(256);
+            AcceptOnlyInstance.SetInitPoolSize(128);
             AcceptOnlyInstance.SetMaxPoolSize(Listener.BACKLOG);
             AcceptOnlyInstance.SetNoSetBuffer();
             AcceptOnlyInstance.FinishConfig();
@@ -46,7 +46,7 @@ namespace Fuckshadows.Util.Sockets
         {
             if (OrdinaryInstance != null) return;
             OrdinaryInstance = new SaeaAwaitablePool();
-            OrdinaryInstance.SetInitPoolSize(256);
+            OrdinaryInstance.SetInitPoolSize(128);
             OrdinaryInstance.SetMaxPoolSize(8192);
             // XXX: max buffer size among all services
             OrdinaryInstance.SetEachBufSize(TCPRelay.BufferSize);

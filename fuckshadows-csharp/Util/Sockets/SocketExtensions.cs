@@ -26,7 +26,7 @@ namespace Fuckshadows.Util.Sockets
             return OperateAsync(socket, awaitable, CONNECT);
         }
 
-        public static SaeaAwaitable DisonnectAsync(this Socket socket, SaeaAwaitable awaitable)
+        public static SaeaAwaitable DisconnectAsync(this Socket socket, SaeaAwaitable awaitable)
         {
             return OperateAsync(socket, awaitable, DISCONNECT);
         }
