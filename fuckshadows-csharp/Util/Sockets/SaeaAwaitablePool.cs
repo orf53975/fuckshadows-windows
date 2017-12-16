@@ -159,10 +159,10 @@ namespace Fuckshadows.Controller
         {
             if (count <= 0 || count > _config._maxPoolSize)
                 throw new ArgumentOutOfRangeException(nameof(count));
-            for (int i = 0; i < count; i++) {
-                SaeaAwaitable args;
-
-                if (_argsPool.TryTake(out args)) {
+            for (int i = 0; i < count; i++)
+            {
+                if (_argsPool.TryTake(out SaeaAwaitable args))
+                {
                     ClearBuffer(args);
                     args.Dispose();
                 }
