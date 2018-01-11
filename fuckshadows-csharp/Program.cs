@@ -24,6 +24,10 @@ namespace Fuckshadows
         [STAThread]
         static void Main()
         {
+            // setup profile optimization
+            System.Runtime.ProfileOptimization.SetProfileRoot(Utils.GetTempPath());
+            System.Runtime.ProfileOptimization.StartProfile("fs-runtime-opt.profile");
+
             TFOSupported = Utils.IsTcpFastOpenSupported();
 
             using (Mutex mutex = new Mutex(false, $"Global\\Fuckshadows_{Application.StartupPath.GetHashCode()}"))
@@ -67,9 +71,6 @@ namespace Fuckshadows
 #else
                 Logging.OpenLogFile();
 #endif
-                // setup profile optimization
-                System.Runtime.ProfileOptimization.SetProfileRoot(Utils.GetTempPath());
-                System.Runtime.ProfileOptimization.StartProfile("fuckshadows-opt-profile");
 
                 MainController = new FuckshadowsController();
                 MenuController = new MenuViewController(MainController);
