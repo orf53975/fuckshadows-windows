@@ -185,10 +185,12 @@ namespace Fuckshadows.Util.Sockets
             return new TcpTrafficToken(err, bytesSent);
         }
 
-        public class TcpTrafficToken
+        // value type: small enough and reduce pressure on managed heap and GC
+        //             Don't need to copy any instance of this type, thus no field-by-field copy would occur
+        public struct TcpTrafficToken
         {
-            public SocketError SocketError { get; private set; }
-            public int BytesTotalTransferred { get; private set; }
+            public readonly SocketError SocketError;
+            public readonly int BytesTotalTransferred;
 
             public TcpTrafficToken(SocketError err, int bytesTotalTransferred)
             {
