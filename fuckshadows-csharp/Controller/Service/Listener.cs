@@ -209,6 +209,7 @@ namespace Fuckshadows.Controller
             try
             {
                 arg = _argsPool.Rent();
+                // Full receive here to get the whole first packet and parse it in single operation
                 var token = await clientSocket.FullReceiveTaskAsync(arg, MaxFirstPacketLen);
                 var err = token.SocketError;
                 ServiceUserToken serviceToken = null;

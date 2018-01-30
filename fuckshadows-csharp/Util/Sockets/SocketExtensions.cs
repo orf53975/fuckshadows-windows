@@ -141,6 +141,8 @@ namespace Fuckshadows.Util.Sockets
         /// <summary>
         /// Full receive from <see cref="Socket"/> until no data available 
         /// or reaches <see cref="intendedRecvSize"/>
+        /// This method relies on <see cref="Socket.Available"/>, internally
+        /// it's calling the native method ioctlsocket with the command FIONREAD
         /// </summary>
         /// <exception cref="ArgumentNullException">
         /// Null <see cref="Socket"/>
@@ -163,6 +165,22 @@ namespace Fuckshadows.Util.Sockets
                                          awaitable.Saea.Count - awaitable.Saea.BytesTransferred);
             }
             return new TcpTrafficToken(err, bytesReceived);
+        }
+
+        /// <summary>
+        /// Similar to <see cref="FullReceiveTaskAsync"/>, while performing receive operation once
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <param name="awaitable"></param>
+        /// <param name="intendedRecvSize"></param>
+        /// <returns></returns>
+        public static async Task<TcpTrafficToken> ReceiveTaskAsync(this Socket socket, SaeaAwaitable awaitable, int intendedRecvSize)
+        {
+            if (socket == null) throw new ArgumentNullException(nameof(socket));
+            if (awaitable == null) throw new ArgumentNullException(nameof(awaitable));
+            awaitable.Saea.SetBuffer(0, intendedRecvSize);
+            var err = await socket.ReceiveAsync(awaitable);
+            return new TcpTrafficToken(err, awaitable.Saea.BytesTransferred);
         }
 
         public static async Task<TcpTrafficToken> FullSendTaskAsync(this Socket socket, SaeaAwaitable awaitable, int intendedSendSize)

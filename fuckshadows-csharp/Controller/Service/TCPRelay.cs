@@ -253,7 +253,7 @@ namespace Fuckshadows.Controller
             try
             {
                 tcpSaea = _argsPool.Rent();
-                var token = await _localSocket.FullReceiveTaskAsync(tcpSaea, TCPRelay.RecvSize);
+                var token = await _localSocket.ReceiveTaskAsync(tcpSaea, TCPRelay.RecvSize);
                 var err = token.SocketError;
                 var recvSize = token.BytesTotalTransferred;
                 Logging.Debug($"Sock5RequestRecv: {err},{recvSize}");
@@ -438,7 +438,7 @@ namespace Fuckshadows.Controller
                 while (IsRunning)
                 {
                     // UDP Assoc: Read all from socket and wait until client closes the connection
-                    token = await _localSocket.FullReceiveTaskAsync(circularRecvSaea, TCPRelay.RecvSize);
+                    token = await _localSocket.ReceiveTaskAsync(circularRecvSaea, TCPRelay.RecvSize);
                     Logging.Debug($"udp assoc local recv: {err}");
                     var ret = token.SocketError;
                     var bytesRecved = token.BytesTotalTransferred;
@@ -591,7 +591,7 @@ namespace Fuckshadows.Controller
                 while (IsRunning)
                 {
                     serverRecvSaea = _argsPool.Rent();
-                    var token = await _serverSocket.FullReceiveTaskAsync(serverRecvSaea, TCPRelay.RecvSize);
+                    var token = await _serverSocket.ReceiveTaskAsync(serverRecvSaea, TCPRelay.RecvSize);
                     var err = token.SocketError;
                     var bytesRecved = token.BytesTotalTransferred;
                     Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
@@ -624,6 +624,9 @@ namespace Fuckshadows.Controller
                     }
                     _argsPool.Return(serverRecvSaea);
                     serverRecvSaea = null;
+
+                    // AEAD: if we need more to decrypt, keep receiving from remote
+                    if (decBufLen <= 0) continue;
 
                     token = await _localSocket.FullSendTaskAsync(localSendSaea, decBufLen);
                     err = token.SocketError;
@@ -671,7 +674,7 @@ namespace Fuckshadows.Controller
                 while (IsRunning)
                 {
                     localRecvSaea = _argsPool.Rent();
-                    var token = await _localSocket.FullReceiveTaskAsync(localRecvSaea, TCPRelay.RecvSize);
+                    var token = await _localSocket.ReceiveTaskAsync(localRecvSaea, TCPRelay.RecvSize);
                     var err = token.SocketError;
                     var bytesRecved = token.BytesTotalTransferred;
                     Logging.Debug($"Upstream local recv: {err},{bytesRecved}");

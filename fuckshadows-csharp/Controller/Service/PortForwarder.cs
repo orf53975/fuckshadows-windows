@@ -137,7 +137,7 @@ namespace Fuckshadows.Controller
                     while (IsRunning)
                     {
                         serverRecvSaea = _argsPool.Rent();
-                        var token = await _remote.FullReceiveTaskAsync(serverRecvSaea, RecvSize);
+                        var token = await _remote.ReceiveTaskAsync(serverRecvSaea, RecvSize);
                         var err = token.SocketError;
                         var bytesRecved = token.BytesTotalTransferred;
                         Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
@@ -210,7 +210,7 @@ namespace Fuckshadows.Controller
                     while (IsRunning)
                     {
                         localRecvSaea = _argsPool.Rent();
-                        var token = await _local.FullReceiveTaskAsync(localRecvSaea, RecvSize);
+                        var token = await _local.ReceiveTaskAsync(localRecvSaea, RecvSize);
                         var err = token.SocketError;
                         var bytesRecved = token.BytesTotalTransferred;
                         Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
