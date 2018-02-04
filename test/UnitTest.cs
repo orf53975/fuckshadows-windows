@@ -176,6 +176,8 @@ namespace test
             }
         }
 
+        #region MbedTLS
+
         [Test]
         public void TestStreamMbedTLSEncryption()
         {
@@ -247,6 +249,87 @@ namespace test
                 throw;
             }
         }
+
+        #endregion
+
+        #region OpenSSL
+
+        [Test]
+        public void TestStreamOpenSSLEncryption()
+        {
+            List<Thread> threads = new List<Thread>();
+            for (int i = 0; i < 10; i++)
+            {
+                Thread t = new Thread(RunSingleStreamOpenSSLEncryptionThread);
+                threads.Add(t);
+                t.Start();
+            }
+            foreach (Thread t in threads)
+            {
+                t.Join();
+            }
+            Assert.IsFalse(encryptionFailed);
+        }
+
+        private void RunSingleStreamOpenSSLEncryptionThread()
+        {
+            try
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    IEncryptor encryptor1 = new StreamOpenSSLEncryptor("aes-256-cfb", "barfoo!");
+                    IEncryptor decryptor1 = new StreamOpenSSLEncryptor("aes-256-cfb", "barfoo!");
+                    RunStreamEncryptionRound(encryptor1, decryptor1);
+
+                    //IEncryptor encryptor2 = new StreamOpenSSLEncryptor("rc4-md5", "barfoo!");
+                    //IEncryptor decryptor2 = new StreamOpenSSLEncryptor("rc4-md5", "barfoo!");
+                    //RunStreamEncryptionRound(encryptor2, decryptor2);
+                }
+            }
+            catch
+            {
+                encryptionFailed = true;
+                throw;
+            }
+        }
+
+        [Test]
+        public void TestAEADOpenSSLEncryption()
+        {
+            List<Thread> threads = new List<Thread>();
+            for (int i = 0; i < 10; i++)
+            {
+                Thread t = new Thread(RunSingleAEADOpenSSLEncryptionThread);
+                threads.Add(t);
+                t.Start();
+            }
+            foreach (Thread t in threads)
+            {
+                t.Join();
+            }
+            Assert.IsFalse(encryptionFailed);
+        }
+
+        private void RunSingleAEADOpenSSLEncryptionThread()
+        {
+            try
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    IEncryptor encryptor1 = new AEADOpenSSLEncryptor("aes-256-gcm", "barfoo!");
+                    IEncryptor decryptor1 = new AEADOpenSSLEncryptor("aes-256-gcm", "barfoo!");
+                    encryptor1.AddrBufLength = abufLength;
+                    RunAEADEncryptionRound(encryptor1, decryptor1);
+                }
+            }
+            catch
+            {
+                encryptionFailed = true;
+                throw;
+            }
+        }
+
+        #endregion
 
         [Test]
         public void TestRC4Encryption()

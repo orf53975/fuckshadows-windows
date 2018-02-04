@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Fuckshadows.Encryption.AEAD;
 using Fuckshadows.Encryption.Stream;
+using Microsoft.VisualBasic;
 
 namespace Fuckshadows.Encryption
 {
@@ -26,21 +28,42 @@ namespace Fuckshadows.Encryption
                 AEADSodiumEncryptorSupportedCiphers.Remove("aes-256-gcm");
             }
 
-            foreach (string method in StreamMbedTLSEncryptor.SupportedCiphers())
+            // XXX: sequence matters, OpenSSL > Sodium > MbedTLS
+            foreach (string method in StreamOpenSSLEncryptor.SupportedCiphers())
             {
-                _registeredEncryptors.Add(method, typeof(StreamMbedTLSEncryptor));
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(StreamOpenSSLEncryptor));
             }
+
             foreach (string method in StreamSodiumEncryptor.SupportedCiphers())
             {
-                _registeredEncryptors.Add(method, typeof(StreamSodiumEncryptor));
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(StreamSodiumEncryptor));
             }
-            foreach (string method in AEADMbedTLSEncryptorSupportedCiphers)
+
+            foreach (string method in StreamMbedTLSEncryptor.SupportedCiphers())
             {
-                _registeredEncryptors.Add(method, typeof(AEADMbedTLSEncryptor));
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(StreamMbedTLSEncryptor));
             }
+
+
+            foreach (string method in AEADOpenSSLEncryptor.SupportedCiphers())
+            {
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(AEADOpenSSLEncryptor));
+            }
+
             foreach (string method in AEADSodiumEncryptorSupportedCiphers)
             {
-                _registeredEncryptors.Add(method, typeof(AEADSodiumEncryptor));
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(AEADSodiumEncryptor));
+            }
+
+            foreach (string method in AEADMbedTLSEncryptorSupportedCiphers)
+            {
+                if (!_registeredEncryptors.ContainsKey(method))
+                    _registeredEncryptors.Add(method, typeof(AEADMbedTLSEncryptor));
             }
         }
 
@@ -50,8 +73,10 @@ namespace Fuckshadows.Encryption
             {
                 method = "aes-256-cfb";
             }
+
             method = method.ToLowerInvariant();
-            Type t = _registeredEncryptors[method];
+            var t = _registeredEncryptors[method];
+
             ConstructorInfo c = t.GetConstructor(ConstructorTypes);
             if (c == null) throw new System.Exception("Invalid ctor");
             IEncryptor result = (IEncryptor) c.Invoke(new object[] {method, password});

@@ -8,7 +8,7 @@ using Fuckshadows.Util;
 
 namespace Fuckshadows.Encryption
 {
-    public class MbedTLS
+    public static class MbedTLS
     {
 #if _X64
         private const string DLLNAME = "libfscrypto64.dll";
