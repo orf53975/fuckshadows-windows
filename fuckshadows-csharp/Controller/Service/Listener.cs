@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Fuckshadows.Encryption;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
 
@@ -99,6 +100,7 @@ namespace Fuckshadows.Controller
                 // Start an asynchronous socket to listen for connections.
                 Logging.Info("Fuckshadows started");
                 Logging.Info($"TFO: {Program.TFOSupported}");
+                Logging.Info(EncryptorFactory.DumpRegisteredEncryptor());
 
                 Task.Run(async () => { await Accept(); });
 

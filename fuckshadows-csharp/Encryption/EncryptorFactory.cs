@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
+using System.Text;
 using Fuckshadows.Encryption.AEAD;
 using Fuckshadows.Encryption.Stream;
-using Microsoft.VisualBasic;
 
 namespace Fuckshadows.Encryption
 {
@@ -81,6 +80,21 @@ namespace Fuckshadows.Encryption
             if (c == null) throw new System.Exception("Invalid ctor");
             IEncryptor result = (IEncryptor) c.Invoke(new object[] {method, password});
             return result;
+        }
+
+        public static string DumpRegisteredEncryptor()
+        {
+            var sb = new StringBuilder();
+            sb.Append(Environment.NewLine);
+            sb.AppendLine("=========================");
+            sb.AppendLine("Registered Encryptor Info");
+            foreach (var encryptor in _registeredEncryptors)
+            {
+                sb.AppendLine($"{encryptor.Key}=>{encryptor.Value.Name}");
+            }
+
+            sb.AppendLine("=========================");
+            return sb.ToString();
         }
     }
 }
