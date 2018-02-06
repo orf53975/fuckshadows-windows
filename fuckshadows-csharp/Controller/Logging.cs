@@ -85,9 +85,8 @@ namespace Fuckshadows.Controller
         public static void LogUsefulException(Exception e)
         {
             // just log useful exceptions, not all of them
-            if (e is SocketException)
+            if (e is SocketException se)
             {
-                SocketException se = (SocketException)e;
                 if (se.SocketErrorCode == SocketError.ConnectionAborted)
                 {
                     // closed by browser when sending
@@ -109,6 +108,10 @@ namespace Fuckshadows.Controller
                 {
                     // The connection attempt timed out, or the connected host has failed to respond.
                 }
+                else if (se.SocketErrorCode == SocketError.OperationAborted)
+                {
+                    // just ignore
+                }
                 else
                 {
                     Info(e);
@@ -119,10 +122,10 @@ namespace Fuckshadows.Controller
             }
             else if (e is Win32Exception)
             {
-                var ex = (Win32Exception) e;
+                var ex = (Win32Exception)e;
 
                 // Win32Exception (0x80004005): A 32 bit processes cannot access modules of a 64 bit process.
-                if ((uint) ex.ErrorCode != 0x80004005)
+                if ((uint)ex.ErrorCode != 0x80004005)
                 {
                     Info(e);
                 }

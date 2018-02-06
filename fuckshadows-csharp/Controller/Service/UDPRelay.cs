@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Fuckshadows.Encryption;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Controller
 {
@@ -21,19 +22,11 @@ namespace Fuckshadows.Controller
         public long outbound = 0;
         public long inbound = 0;
 
-        private SaeaAwaitablePool _argsPool;
-
         private const int UDP_HANDLER_NUM = 512;
 
         public UDPRelay(FuckshadowsController controller)
         {
             this._controller = controller;
-            InitArgsPool();
-        }
-
-        private void InitArgsPool()
-        {
-            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -56,7 +49,7 @@ namespace Fuckshadows.Controller
             {
                 handler = new UDPHandler(socket,
                     _controller.GetAServer(remoteEndPoint, null /*TODO: fix this*/),
-                    remoteEndPoint, _argsPool);
+                    remoteEndPoint);
                 _cache.add(remoteEndPoint, handler);
             }
             Task.Factory.StartNew(async () => { await handler.Start(firstPacket, length); }).Forget();
@@ -76,8 +69,6 @@ namespace Fuckshadows.Controller
             private EndPoint _localEndPoint;
             private EndPoint _serverEndPoint;
 
-            private SaeaAwaitablePool _argsPool;
-
             private int _state = _none;
             private const int _none = 0;
             private const int _running = 1;
@@ -85,12 +76,11 @@ namespace Fuckshadows.Controller
 
             public bool IsRunning => _state == _running;
 
-            public UDPHandler(Socket local, Server server, EndPoint localEndPoint, SaeaAwaitablePool pool)
+            public UDPHandler(Socket local, Server server, EndPoint localEndPoint)
             {
                 _localSocket = local;
                 _server = server;
                 _localEndPoint = localEndPoint;
-                _argsPool = pool;
                 _serverEndPoint = SocketUtil.GetEndPoint(server.server, server.server_port);
                 _serverSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
             }
@@ -98,8 +88,7 @@ namespace Fuckshadows.Controller
             public async Task Start(byte[] data, int length)
             {
                 Interlocked.Exchange(ref _state, _running);
-                SaeaAwaitable upSaea = null;
-                SaeaAwaitable downSaea = null;
+                ArraySegment<byte> tmpArrSegment = default(ArraySegment<byte>);
                 try
                 {
                     Logging.Debug($"-----UDP relay got {length}-----");
@@ -107,71 +96,58 @@ namespace Fuckshadows.Controller
                     byte[] dataIn = new byte[length - 3];
                     Array.Copy(data, 3, dataIn, 0, length - 3);
 
-                    upSaea = _argsPool.Rent();
                     int outlen;
-                    encryptor.EncryptUDP(dataIn, dataIn.Length, upSaea.Saea.Buffer, out outlen);
-                    upSaea.Saea.SetBuffer(0, outlen);
-                    upSaea.Saea.RemoteEndPoint = _serverEndPoint;
-                    
-                    var ret = await _serverSocket.SendToAsync(upSaea);
-                    if (ret != SocketError.Success)
+                    byte[] maxUDPBytes = new byte[1500];
+                    encryptor.EncryptUDP(dataIn, dataIn.Length, maxUDPBytes, out outlen);
+                    tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, outlen);
+                    int ret = await _serverSocket.SendToAsync(tmpArrSegment, SocketFlags.None, _serverEndPoint);
+                    if (ret <= 0)
                     {
-                        Logging.Error($"[udp] remote sendto {ret},{upSaea.Saea.BytesTransferred}");
+                        Logging.Error($"[udp] remote sendto {ret}");
                         Close();
                         return;
                     }
-                    Logging.Debug($"[udp] remote sendto {_localEndPoint} -> {_serverEndPoint} {upSaea.Saea.BytesTransferred}");
+                    Logging.Debug($"[udp] remote sendto {_localEndPoint} -> {_serverEndPoint} {ret}");
 
-                    _argsPool.Return(upSaea);
-                    upSaea = null;
 
                     while (IsRunning)
                     {
-                        downSaea = _argsPool.Rent();
-                        downSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-                        ret = await _serverSocket.ReceiveFromAsync(downSaea);
-                        var bytesReceived = downSaea.Saea.BytesTransferred;
-                        if (ret != SocketError.Success)
+
+                        tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, 1500);
+                        var result = await _serverSocket.ReceiveFromAsync(tmpArrSegment, SocketFlags.None,
+                            new IPEndPoint(IPAddress.Any, 0));
+                        var bytesReceived = result.ReceivedBytes;
+                        if (bytesReceived <= 0)
                         {
                             Logging.Error($"[udp] remote recvfrom {ret},{bytesReceived}");
                             Close();
                             return;
                         }
-                        Logging.Debug($"[udp] remote recvfrom {downSaea.Saea.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
+                        Logging.Debug($"[udp] remote recvfrom {result.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
                         byte[] dataOut = new byte[bytesReceived];
                         encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
-                        encryptor.DecryptUDP(downSaea.Saea.Buffer, bytesReceived, dataOut, out outlen);
+                        encryptor.DecryptUDP(maxUDPBytes, bytesReceived, dataOut, out outlen);
 
-                        downSaea.Saea.ResetSAEAProperties(true);
 
-                        byte[] buf = downSaea.Saea.Buffer;
+                        byte[] buf = maxUDPBytes;
                         buf[0] = buf[1] = buf[2] = 0;
                         Array.Copy(dataOut, 0, buf, 3, outlen);
-                        downSaea.Saea.RemoteEndPoint = _localEndPoint;
-                        downSaea.Saea.SetBuffer(0, outlen + 3);
-                        ret = await _localSocket.SendToAsync(downSaea);
-                        if (ret != SocketError.Success)
+
+                        tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, outlen + 3);
+                        var bytesSent = await _localSocket.SendToAsync(tmpArrSegment, SocketFlags.None, _localEndPoint);
+                        if (bytesSent <= 0)
                         {
-                            Logging.Error($"[udp] local sendto {ret},{downSaea.Saea.BytesTransferred}");
+                            Logging.Error($"[udp] local sendto {ret}");
                             Close();
                             return;
                         }
-                        Logging.Debug($"[udp] local sendto {_localSocket.LocalEndPoint} -> {_localEndPoint} {downSaea.Saea.BytesTransferred}");
-                        _argsPool.Return(downSaea);
-                        downSaea = null;
+                        Logging.Debug($"[udp] local sendto {_localSocket.LocalEndPoint} -> {_localEndPoint} {bytesSent}");
                     }
                 }
                 catch (Exception e)
                 {
                     Logging.LogUsefulException(e);
                     Close();
-                }
-                finally
-                {
-                    _argsPool.Return(upSaea);
-                    upSaea = null;
-                    _argsPool.Return(downSaea);
-                    downSaea = null;
                 }
             }
 

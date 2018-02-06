@@ -10,6 +10,7 @@ using Fuckshadows.Encryption;
 using Fuckshadows.Encryption.AEAD;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
+using Fuckshadows.Util.Sockets.Buffer;
 using static Fuckshadows.Encryption.EncryptorBase;
 
 namespace Fuckshadows.Controller
@@ -19,7 +20,7 @@ namespace Fuckshadows.Controller
         private FuckshadowsController _controller;
         private DateTime _lastSweepTime;
         private Configuration _config;
-        public SaeaAwaitablePool _argsPool;
+        public ISegmentBufferManager _segmentBufferManager;
         public ISet<TCPHandler> Handlers { get; }
 
         public const int CMD_CONNECT = 0x01;
@@ -54,7 +55,7 @@ namespace Fuckshadows.Controller
             _config = conf;
             Handlers = new HashSet<TCPHandler>();
             _lastSweepTime = DateTime.Now;
-            InitArgsPool();
+            _segmentBufferManager = new SegmentBufferManager(2048, TCPRelay.BufferSize, 2);
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -101,11 +102,6 @@ namespace Fuckshadows.Controller
             return true;
         }
 
-        private void InitArgsPool()
-        {
-            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
-        }
-
         public override void Stop()
         {
             List<TCPHandler> handlersToClose = new List<TCPHandler>();
@@ -141,7 +137,7 @@ namespace Fuckshadows.Controller
     {
         public DateTime lastActivity;
 
-        private SaeaAwaitablePool _argsPool;
+        private ISegmentBufferManager _segmentBufferManager;
         private FuckshadowsController _controller;
         private Configuration _config;
         private TCPRelay _tcprelay;
@@ -186,7 +182,7 @@ namespace Fuckshadows.Controller
             _config = config;
             _tcprelay = tcprelay;
             _localSocket = socket;
-            _argsPool = tcprelay._argsPool;
+            _segmentBufferManager = tcprelay._segmentBufferManager;
 
             lastActivity = DateTime.Now;
         }
@@ -202,7 +198,6 @@ namespace Fuckshadows.Controller
 
         private async Task HandshakeSendResponse()
         {
-            SaeaAwaitable tcpSaea = null;
             try
             {
                 if (_firstPacketLength <= 1)
@@ -219,19 +214,14 @@ namespace Fuckshadows.Controller
                     Logging.Error("socks 5 protocol error");
                 }
 
-                tcpSaea = _argsPool.Rent();
-                tcpSaea.PrepareSAEABuffer(response, response.Length);
-                var token = await _localSocket.FullSendTaskAsync(tcpSaea, response.Length);
-                var err = token.SocketError;
-                var bytesSent = token.BytesTotalTransferred;
-                Logging.Debug($"HandshakeSendResponse: {err},{bytesSent}");
-                if (err != SocketError.Success)
+                var bytesSent = await _localSocket.FullSendTaskAsync(response, 0, response.Length);
+                Logging.Debug($"HandshakeSendResponse: {bytesSent}");
+                if (bytesSent <= 0)
                 {
                     Close();
                     return;
                 }
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
+
                 Debug.Assert(bytesSent == response.Length);
                 Task.Factory.StartNew(async () => { await Sock5RequestRecv(); }).Forget();
             }
@@ -240,30 +230,22 @@ namespace Fuckshadows.Controller
                 Logging.LogUsefulException(e);
                 Close();
             }
-            finally
-            {
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
-            }
         }
 
         private async Task Sock5RequestRecv()
         {
-            SaeaAwaitable tcpSaea = null;
             try
             {
-                tcpSaea = _argsPool.Rent();
-                var token = await _localSocket.ReceiveTaskAsync(tcpSaea, TCPRelay.RecvSize);
-                var err = token.SocketError;
-                var recvSize = token.BytesTotalTransferred;
-                Logging.Debug($"Sock5RequestRecv: {err},{recvSize}");
-                if (err != SocketError.Success)
+                var token = await _localSocket.FullReceiveTaskAsync(TCPRelay.RecvSize);
+                var recvSize = token.BytesTotal;
+                Logging.Debug($"Sock5RequestRecv: {recvSize}");
+                if (recvSize <= 0)
                 {
                     Close();
                     return;
                 }
 
-                var recvBuf = tcpSaea.Saea.Buffer;
+                var recvBuf = token.PayloadBytes;
                 if (recvSize >= 5)
                 {
                     byte _command = recvBuf[1];
@@ -286,8 +268,7 @@ namespace Fuckshadows.Controller
                         _remainingBytes = new byte[_remainingBytesLen];
                         Buffer.BlockCopy(recvBuf, _addrBufLength, _remainingBytes, 0, _remainingBytesLen);
                     }
-                    _argsPool.Return(tcpSaea);
-                    tcpSaea = null;
+
                     // read address and call the corresponding method
                     if (_command == TCPRelay.CMD_CONNECT)
                     {
@@ -304,33 +285,21 @@ namespace Fuckshadows.Controller
                 Logging.LogUsefulException(e);
                 Close();
             }
-            finally
-            {
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
-            }
         }
 
         private async Task Sock5ConnectResponseSend()
         {
-            SaeaAwaitable tcpSaea = null;
             try
             {
-                tcpSaea = _argsPool.Rent();
-                tcpSaea.PrepareSAEABuffer(TCPRelay.Sock5ConnectRequestReplySuccess,
-                    TCPRelay.Sock5ConnectRequestReplySuccess.Length);
-                var token = await _localSocket.FullSendTaskAsync(tcpSaea,
-                    TCPRelay.Sock5ConnectRequestReplySuccess.Length);
-                var err = token.SocketError;
-                var bytesSent = token.BytesTotalTransferred;
-                Logging.Debug($"Sock5ConnectResponseSend: {err},{bytesSent}");
-                if (err != SocketError.Success)
+                var bytesSent = await _localSocket.FullSendTaskAsync(TCPRelay.Sock5ConnectRequestReplySuccess,
+                    0, TCPRelay.Sock5ConnectRequestReplySuccess.Length);
+                Logging.Debug($"Sock5ConnectResponseSend: {bytesSent}");
+                if (bytesSent <= 0)
                 {
                     Close();
                     return;
                 }
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
+
                 Debug.Assert(bytesSent == TCPRelay.Sock5ConnectRequestReplySuccess.Length);
                 Task.Factory.StartNew(async () => { await StartConnect(); }).Forget();
             }
@@ -338,11 +307,6 @@ namespace Fuckshadows.Controller
             {
                 Logging.LogUsefulException(e);
                 Close();
-            }
-            finally
-            {
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
             }
         }
 
@@ -415,48 +379,35 @@ namespace Fuckshadows.Controller
             response[response.Length - 1] = (byte) (port & 0xFF);
             response[response.Length - 2] = (byte) ((port >> 8) & 0xFF);
 
-            SaeaAwaitable tcpSaea = null;
-            SaeaAwaitable circularRecvSaea = null;
+            ArraySegment<byte> buf = default(ArraySegment<byte>);
             try
             {
-                tcpSaea = _argsPool.Rent();
-                tcpSaea.PrepareSAEABuffer(response, response.Length);
-                var token = await _localSocket.FullSendTaskAsync(tcpSaea, response.Length);
-                var err = token.SocketError;
-                var sentSize = token.BytesTotalTransferred;
-                Logging.Debug($"Udp assoc local send: {err},{sentSize}");
-                if (err != SocketError.Success)
+                buf = _segmentBufferManager.BorrowBuffer();
+                var sentSize = await _localSocket.FullSendTaskAsync(response, 0, response.Length);
+
+                Logging.Debug($"Udp assoc local send: {sentSize}");
+                if (sentSize <= 0)
                 {
                     Close();
                     return;
                 }
                 Debug.Assert(sentSize == response.Length);
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
-                circularRecvSaea = _argsPool.Rent();
 
                 while (IsRunning)
                 {
                     // UDP Assoc: Read all from socket and wait until client closes the connection
-                    token = await _localSocket.ReceiveTaskAsync(circularRecvSaea, TCPRelay.RecvSize);
-                    Logging.Debug($"udp assoc local recv: {err}");
-                    var ret = token.SocketError;
-                    var bytesRecved = token.BytesTotalTransferred;
-                    if (ret != SocketError.Success)
-                    {
-                        Logging.Error($"udp assoc: {ret},{bytesRecved}");
-                        Close();
-                        return;
-                    }
+                    var bytesRecved = await _localSocket.ReceiveAsync(buf, SocketFlags.None);
+
                     if (bytesRecved <= 0)
                     {
+                        if (bytesRecved != 0)
+                            Logging.Error($"udp assoc: {bytesRecved}");
                         Close();
                         return;
                     }
-                    circularRecvSaea.Saea.ResetSAEAProperties(true);
                 }
-                _argsPool.Return(circularRecvSaea);
-                circularRecvSaea = null;
+                _segmentBufferManager.ReturnBuffer(buf);
+                buf = default(ArraySegment<byte>);
             }
             catch (Exception e)
             {
@@ -465,10 +416,11 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(tcpSaea);
-                tcpSaea = null;
-                _argsPool.Return(circularRecvSaea);
-                circularRecvSaea = null;
+                if (buf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
+                }
             }
         }
 
@@ -490,24 +442,21 @@ namespace Fuckshadows.Controller
 
         private async Task StartConnect()
         {
-            SaeaAwaitable serverSaea = null;
+            ArraySegment<byte> buf = default(ArraySegment<byte>);
             try
             {
                 CreateRemote();
 
+                buf = _segmentBufferManager.BorrowBuffer();
+
                 _serverSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 _serverSocket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
-                _serverSocket.SetTFO();
-
-                // encrypt and attach encrypted buffer to ConnectAsync
-                serverSaea = _argsPool.Rent();
-                var realSaea = serverSaea.Saea;
 
                 var encryptedbufLen = -1;
                 Logging.Dump("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
                 lock (_encryptionLock)
                 {
-                    _encryptor.Encrypt(_addrBuf, _addrBufLength, realSaea.Buffer, out encryptedbufLen);
+                    _encryptor.Encrypt(_addrBuf, _addrBufLength, buf.Array, out encryptedbufLen);
                 }
                 Logging.Debug("StartConnect(): addrBuf enc len " + encryptedbufLen);
                 if (_remainingBytesLen > 0)
@@ -521,32 +470,21 @@ namespace Fuckshadows.Controller
                         _encryptor.Encrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
                     }
                     Logging.Debug("StartConnect(): remaining enc len " + encRemainingBufLen);
-                    Buffer.BlockCopy(tmp, 0, realSaea.Buffer, encryptedbufLen, encRemainingBufLen);
+                    Buffer.BlockCopy(tmp, 0, buf.Array, buf.Offset + encryptedbufLen, encRemainingBufLen);
                     encryptedbufLen += encRemainingBufLen;
                 }
                 Logging.Debug("actual enc buf len " + encryptedbufLen);
-                realSaea.RemoteEndPoint = SocketUtil.GetEndPoint(_server.server, _server.server_port);
-                realSaea.SetBuffer(0, encryptedbufLen);
 
-                var err = await _serverSocket.ConnectAsync(serverSaea);
-                if (err != SocketError.Success)
+                await _serverSocket.ConnectAsync(SocketUtil.GetEndPoint(_server.server, _server.server_port));
+
+                var bytesSent = await _serverSocket.FullSendTaskAsync(buf.Array, buf.Offset, encryptedbufLen);
+                if (bytesSent <= 0)
                 {
-                    Logging.Error($"StartConnect: {err}");
+                    Logging.Error($"StartConnect: {bytesSent}");
                     Close();
                     return;
                 }
                 Logging.Debug("remote connected");
-                if (serverSaea.Saea.BytesTransferred != encryptedbufLen)
-                {
-                    // not sent all data, it may caused by TFO, disable it
-                    Logging.Info("Disable TCP Fast Open due to initial send failure");
-                    Program.DisableTFO();
-                    Close();
-                    return;
-                }
-
-                _argsPool.Return(serverSaea);
-                serverSaea = null;
 
                 if (_config.isVerboseLogging)
                 {
@@ -570,8 +508,11 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(serverSaea);
-                serverSaea = null;
+                if (buf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
+                }
             }
         }
 
@@ -584,28 +525,26 @@ namespace Fuckshadows.Controller
         // server recv -> local send
         private async Task Downstream()
         {
-            SaeaAwaitable serverRecvSaea = null;
-            SaeaAwaitable localSendSaea = null;
+            ArraySegment<byte> serverRecvBuf = default(ArraySegment<byte>);
+            ArraySegment<byte> localSendBuf = default(ArraySegment<byte>);
             try
             {
                 while (IsRunning)
                 {
-                    serverRecvSaea = _argsPool.Rent();
-                    var token = await _serverSocket.ReceiveTaskAsync(serverRecvSaea, TCPRelay.RecvSize);
-                    var err = token.SocketError;
-                    var bytesRecved = token.BytesTotalTransferred;
-                    Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
+                    serverRecvBuf = _segmentBufferManager.BorrowBuffer();
+                    var bytesRecved = await _serverSocket.ReceiveAsync(serverRecvBuf, SocketFlags.None);
+                    Logging.Debug($"Downstream server recv: {bytesRecved}");
 
-                    if (err == SocketError.Success && bytesRecved <= 0)
+                    if (bytesRecved == 0)
                     {
                         _localSocket.Shutdown(SocketShutdown.Send);
                         _localShutdown = true;
                         CheckClose();
                         return;
                     }
-                    if (err != SocketError.Success)
+                    else if (bytesRecved < 0)
                     {
-                        Logging.Debug($"Downstream server recv socket err: {err}");
+                        Logging.Debug($"Downstream server recv socket err: {bytesRecved}");
                         Close();
                         return;
                     }
@@ -613,33 +552,35 @@ namespace Fuckshadows.Controller
                     _tcprelay.UpdateInboundCounter(_server, bytesRecved);
                     lastActivity = DateTime.Now;
 
-                    localSendSaea = _argsPool.Rent();
+                    localSendBuf = _segmentBufferManager.BorrowBuffer();
+
                     int decBufLen = -1;
                     lock (_decryptionLock)
                     {
-                        _encryptor.Decrypt(serverRecvSaea.Saea.Buffer,
+                        _encryptor.Decrypt(serverRecvBuf.Array,
                             bytesRecved,
-                            localSendSaea.Saea.Buffer,
+                            localSendBuf.Array,
                             out decBufLen);
                     }
-                    _argsPool.Return(serverRecvSaea);
-                    serverRecvSaea = null;
+
+                    _segmentBufferManager.ReturnBuffer(serverRecvBuf);
+                    serverRecvBuf = default(ArraySegment<byte>);
 
                     // AEAD: if we need more to decrypt, keep receiving from remote
                     if (decBufLen <= 0) continue;
 
-                    token = await _localSocket.FullSendTaskAsync(localSendSaea, decBufLen);
-                    err = token.SocketError;
-                    var bytesSent = token.BytesTotalTransferred;
-                    Logging.Debug($"Downstream local send socket err: {err},{bytesSent}");
-                    if (err != SocketError.Success)
+                    var bytesSent = await _localSocket.FullSendTaskAsync(localSendBuf.Array, 0, decBufLen);
+
+                    Logging.Debug($"Downstream local send socket err: {bytesSent}");
+                    if (bytesSent <= 0)
                     {
                         Close();
                         return;
                     }
-                    _argsPool.Return(localSendSaea);
-                    localSendSaea = null;
+
                     Debug.Assert(bytesSent == decBufLen);
+                    _segmentBufferManager.ReturnBuffer(localSendBuf);
+                    localSendBuf = default(ArraySegment<byte>);
                 }
             }
             catch (AggregateException agex)
@@ -657,68 +598,75 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(serverRecvSaea);
-                serverRecvSaea = null;
-                _argsPool.Return(localSendSaea);
-                localSendSaea = null;
+                if (serverRecvBuf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(serverRecvBuf);
+                    serverRecvBuf = default(ArraySegment<byte>);
+                }
+                if (localSendBuf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(localSendBuf);
+                    localSendBuf = default(ArraySegment<byte>);
+                }
             }
         }
 
         // local recv -> server send
         private async Task Upstream()
         {
-            SaeaAwaitable localRecvSaea = null;
-            SaeaAwaitable serverSendSaea = null;
+            ArraySegment<byte> localRecvBuf = default(ArraySegment<byte>);
+            ArraySegment<byte> serverSendBuf = default(ArraySegment<byte>);
             try
             {
                 while (IsRunning)
                 {
-                    localRecvSaea = _argsPool.Rent();
-                    var token = await _localSocket.ReceiveTaskAsync(localRecvSaea, TCPRelay.RecvSize);
-                    var err = token.SocketError;
-                    var bytesRecved = token.BytesTotalTransferred;
-                    Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
-                    if (err == SocketError.Success && bytesRecved <= 0)
+                    localRecvBuf = _segmentBufferManager.BorrowBuffer();
+                    var bytesRecved = await _localSocket.ReceiveAsync(localRecvBuf, SocketFlags.None);
+                    Logging.Debug($"Upstream local recv: {bytesRecved}");
+                    if (bytesRecved == 0)
                     {
                         _serverSocket.Shutdown(SocketShutdown.Send);
                         _remoteShutdown = true;
                         CheckClose();
                         return;
                     }
-                    if (err != SocketError.Success)
+                    else if (bytesRecved < 0)
                     {
-                        Logging.Debug($"Upstream local recv socket err: {err}");
+                        Logging.Debug($"Upstream local recv socket err: {bytesRecved}");
                         Close();
                         return;
                     }
                     Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
 
-                    serverSendSaea = _argsPool.Rent();
+                    serverSendBuf = _segmentBufferManager.BorrowBuffer();
+
                     int encBufLen = -1;
                     lock (_encryptionLock)
                     {
-                        _encryptor.Encrypt(localRecvSaea.Saea.Buffer,
+                        _encryptor.Encrypt(localRecvBuf.Array,
                             bytesRecved,
-                            serverSendSaea.Saea.Buffer,
+                            serverSendBuf.Array,
                             out encBufLen);
                     }
-                    _argsPool.Return(localRecvSaea);
-                    localRecvSaea = null;
+
+                    _segmentBufferManager.ReturnBuffer(localRecvBuf);
+                    localRecvBuf = default(ArraySegment<byte>);
 
                     _tcprelay.UpdateOutboundCounter(_server, encBufLen);
 
-                    token = await _serverSocket.FullSendTaskAsync(serverSendSaea, encBufLen);
-                    err = token.SocketError;
-                    var bytesSent = token.BytesTotalTransferred;
-                    Logging.Debug($"Upstream server send: {err},{bytesSent}");
-                    if (err != SocketError.Success)
+                    var bytesSent = await _serverSocket.FullSendTaskAsync(serverSendBuf.Array, 0, encBufLen);
+
+                    Logging.Debug($"Upstream server send: {bytesSent}");
+                    if (bytesSent <= 0)
                     {
                         Close();
                         return;
                     }
-                    _argsPool.Return(serverSendSaea);
-                    serverSendSaea = null;
+                    
                     Debug.Assert(bytesSent == encBufLen);
+
+                    _segmentBufferManager.ReturnBuffer(serverSendBuf);
+                    serverSendBuf = default(ArraySegment<byte>);
                 }
             }
             catch (AggregateException agex)
@@ -736,10 +684,16 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(localRecvSaea);
-                localRecvSaea = null;
-                _argsPool.Return(serverSendSaea);
-                serverSendSaea = null;
+                if (localRecvBuf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(localRecvBuf);
+                    localRecvBuf = default(ArraySegment<byte>);
+                }
+                if (serverSendBuf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(serverSendBuf);
+                    serverSendBuf = default(ArraySegment<byte>);
+                }
             }
         }
 

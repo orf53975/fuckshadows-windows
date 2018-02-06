@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Fuckshadows.Encryption;
 using Fuckshadows.Model;
 using Fuckshadows.Util.Sockets;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Controller
 {
@@ -18,11 +19,11 @@ namespace Fuckshadows.Controller
         private Socket _tcpListenerSocket;
         private Socket _udpSocket;
         private readonly List<IService> _services;
-        private SaeaAwaitablePool _acceptArgsPool;
-        private SaeaAwaitablePool _argsPool;
 
         public const int BACKLOG = 1024;
         private const int MaxFirstPacketLen = 4096;
+
+        private ISegmentBufferManager _segmentBufferManager;
 
         private int _state = _none;
         private const int _none = 0;
@@ -34,6 +35,7 @@ namespace Fuckshadows.Controller
         public Listener(List<IService> services)
         {
             this._services = services;
+            _segmentBufferManager = new SegmentBufferManager(1024, MaxFirstPacketLen);
         }
 
         private bool CheckIfPortInUse(int port)
@@ -49,12 +51,6 @@ namespace Fuckshadows.Controller
                 }
             }
             return false;
-        }
-
-        private void InitArgsPool()
-        {
-            _acceptArgsPool = SaeaAwaitablePoolManager.GetAcceptOnlyInstance();
-            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
         }
 
         public void Start(Configuration config)
@@ -77,12 +73,10 @@ namespace Fuckshadows.Controller
 
             try
             {
-                InitArgsPool();
                 // Create a TCP/IP socket.
                 // XXX: this constructor will create a IPv6 socket with dual mode enabled
                 _tcpListenerSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 _tcpListenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                _tcpListenerSocket.SetTFO();
 
                 _udpSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
                 _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
@@ -99,7 +93,6 @@ namespace Fuckshadows.Controller
 
                 // Start an asynchronous socket to listen for connections.
                 Logging.Info("Fuckshadows started");
-                Logging.Info($"TFO: {Program.TFOSupported}");
                 Logging.Info(EncryptorFactory.DumpRegisteredEncryptor());
 
                 Task.Run(async () => { await Accept(); });
@@ -115,36 +108,35 @@ namespace Fuckshadows.Controller
 
         private async Task StartRecvFrom()
         {
-            SaeaAwaitable udpSaea = null;
+            ArraySegment<byte> buf = default(ArraySegment<byte>);
             try
             {
                 while (IsListening)
                 {
-                    udpSaea = _argsPool.Rent();
-                    udpSaea.Saea.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-                    var err = await _udpSocket.ReceiveFromAsync(udpSaea);
-                    var saea = udpSaea.Saea;
-                    var bytesRecved = saea.BytesTransferred;
-                    
-                    if (err == SocketError.Success && bytesRecved > 0)
+                    var remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                    buf = _segmentBufferManager.BorrowBuffer();
+                    var result = await _udpSocket.ReceiveFromAsync(buf, SocketFlags.None, remoteEndPoint);
+                    var bytesRecved = result.ReceivedBytes;
+                    if (bytesRecved > 0)
                     {
                         ServiceUserToken token = new ServiceUserToken
                         {
                             socket = _udpSocket,
                             firstPacket = new byte[bytesRecved],
                             firstPacketLength = bytesRecved,
-                            remoteEndPoint = saea.RemoteEndPoint
+                            remoteEndPoint = result.RemoteEndPoint
                         };
-                        Buffer.BlockCopy(saea.Buffer, 0, token.firstPacket, 0, bytesRecved);
+                        Buffer.BlockCopy(buf.Array, buf.Offset, token.firstPacket, 0, bytesRecved);
 
                         Task.Factory.StartNew(() => HandleUDPServices(token)).Forget();
                     }
                     else
                     {
-                        Logging.Error($"RecvFrom: {err},{bytesRecved}");
+                        Logging.Error($"RecvFrom: {bytesRecved}");
                     }
-                    _argsPool.Return(udpSaea);
-                    udpSaea = null;
+
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
                 }
             }
             catch (Exception e)
@@ -153,8 +145,11 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(udpSaea);
-                udpSaea = null;
+                if (buf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
+                }
             }
         }
 
@@ -171,53 +166,34 @@ namespace Fuckshadows.Controller
 
         private async Task Accept()
         {
-            SaeaAwaitable saea = null;
             try
             {
                 while (IsListening)
                 {
-                    saea = _acceptArgsPool.Rent();
-
-                    var socketError = await _tcpListenerSocket.AcceptAsync(saea);
-                    if (socketError == SocketError.Success)
-                    {
-                        Logging.Debug("accepted a connection");
-                        var acceptedSocket = saea.Saea.AcceptSocket;
-                        Task.Factory.StartNew(async () => { await RecvFirstPacket(acceptedSocket); },
-                            TaskCreationOptions.PreferFairness).Forget();
-                    }
-                    else
-                    {
-                        Logging.Error($"Accept socket err: {socketError}");
-                    }
-                    _acceptArgsPool.Return(saea);
-                    saea = null;
+                    var socket = await _tcpListenerSocket.AcceptAsync();
+                    Logging.Debug("accepted a connection");
+                    Task.Factory.StartNew(async () => { await RecvFirstPacket(socket); },
+                         TaskCreationOptions.PreferFairness).Forget();
                 }
             }
             catch (Exception ex)
             {
                 Logging.LogUsefulException(ex);
             }
-            finally
-            {
-                _acceptArgsPool.Return(saea);
-                saea = null;
-            }
         }
 
         private async Task RecvFirstPacket(Socket clientSocket)
         {
-            SaeaAwaitable arg = null;
+            ArraySegment<byte> buf = default(ArraySegment<byte>);
             try
             {
-                arg = _argsPool.Rent();
                 // Full receive here to get the whole first packet and parse it in single operation
-                var token = await clientSocket.FullReceiveTaskAsync(arg, MaxFirstPacketLen);
-                var err = token.SocketError;
+                buf = _segmentBufferManager.BorrowBuffer();
+                var token = await clientSocket.FullReceiveTaskAsync(MaxFirstPacketLen);
+                var bytesReceived = token.BytesTotal;
                 ServiceUserToken serviceToken = null;
-                var bytesReceived = token.BytesTotalTransferred;
-                Logging.Debug($"RecvFirstPacket: {err},{bytesReceived}");
-                if (err == SocketError.Success && bytesReceived > 0)
+                Logging.Debug($"RecvFirstPacket: {bytesReceived}");
+                if (bytesReceived > 0)
                 {
                     serviceToken = new ServiceUserToken
                     {
@@ -225,15 +201,16 @@ namespace Fuckshadows.Controller
                         firstPacket = new byte[bytesReceived],
                         firstPacketLength = bytesReceived
                     };
-                    Buffer.BlockCopy(arg.Saea.Buffer, 0, serviceToken.firstPacket, 0, bytesReceived);
+                    Buffer.BlockCopy(token.PayloadBytes, 0, serviceToken.firstPacket, 0, bytesReceived);
                 }
                 else
                 {
-                    Logging.Error($"RecvFirstPacket socket err: {err},{bytesReceived}");
+                    Logging.Error($"RecvFirstPacket socket err: {bytesReceived}");
                     goto Shutdown;
                 }
-                _argsPool.Return(arg);
-                arg = null;
+
+                _segmentBufferManager.ReturnBuffer(buf);
+                buf = default(ArraySegment<byte>);
 
                 foreach (IService service in _services)
                 {
@@ -242,6 +219,7 @@ namespace Fuckshadows.Controller
                         return;
                     }
                 }
+
                 Shutdown:
                 // no service found for this
                 if (clientSocket.ProtocolType == ProtocolType.Tcp)
@@ -255,8 +233,11 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                _argsPool.Return(arg);
-                arg = null;
+                if (buf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
+                }
             }
         }
 

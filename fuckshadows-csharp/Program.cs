@@ -16,7 +16,6 @@ namespace Fuckshadows
     {
         public static FuckshadowsController MainController { get; private set; }
         public static MenuViewController MenuController { get; private set; }
-        public static bool TFOSupported { get; private set; }
 
         /// <summary>
         /// 应用程序的主入口点。
@@ -27,8 +26,6 @@ namespace Fuckshadows
             // setup profile optimization
             System.Runtime.ProfileOptimization.SetProfileRoot(Utils.GetTempPath());
             System.Runtime.ProfileOptimization.StartProfile("fs-runtime-opt.profile");
-
-            TFOSupported = Utils.IsTcpFastOpenSupported();
 
             using (Mutex mutex = new Mutex(false, $"Global\\Fuckshadows_{Application.StartupPath.GetHashCode()}"))
             {
@@ -139,7 +136,5 @@ namespace Fuckshadows
                 MainController = null;
             }
         }
-
-        public static void DisableTFO() { TFOSupported = false; }
     }
 }

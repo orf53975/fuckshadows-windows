@@ -4,24 +4,20 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Fuckshadows.Util.Sockets;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Controller
 {
     class PortForwarder : Listener.Service
     {
         private readonly int _targetPort;
-        private SaeaAwaitablePool _argsPool;
+        private ISegmentBufferManager _segmentBufferManager;
         public const int RecvSize = 8192;
 
         public PortForwarder(int targetPort)
         {
             _targetPort = targetPort;
-            InitArgsPool();
-        }
-
-        private void InitArgsPool()
-        {
-            _argsPool = SaeaAwaitablePoolManager.GetOrdinaryInstance();
+            _segmentBufferManager = new SegmentBufferManager(2048, RecvSize);
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -36,7 +32,7 @@ namespace Fuckshadows.Controller
             int length = obj.firstPacketLength;
             if (length <= 0) return false;
 
-            new Handler().Start(firstPacket, length, socket, _targetPort, _argsPool);
+            new Handler().Start(firstPacket, length, socket, _targetPort, _segmentBufferManager);
             return true;
         }
 
@@ -46,7 +42,7 @@ namespace Fuckshadows.Controller
 
         private class Handler
         {
-            private SaeaAwaitablePool _argsPool;
+            private ISegmentBufferManager _segmentBufferManager;
             private byte[] _firstPacket;
             private int _firstPacketLength;
             private Socket _local;
@@ -65,12 +61,13 @@ namespace Fuckshadows.Controller
 
             public bool IsRunning => _state == _running;
 
-            public void Start(byte[] firstPacket, int length, Socket socket, int targetPort, SaeaAwaitablePool pool)
+            public void Start(byte[] firstPacket, int length, Socket socket,
+                int targetPort, ISegmentBufferManager bm)
             {
                 _firstPacket = firstPacket;
                 _firstPacketLength = length;
                 _local = socket;
-                _argsPool = pool;
+                _segmentBufferManager = bm;
 
                 Interlocked.Exchange(ref _state, _running);
 
@@ -92,15 +89,12 @@ namespace Fuckshadows.Controller
 
             private async Task StartConnect(int port)
             {
-                SaeaAwaitable tcpSaea = null;
                 try
                 {
-                    tcpSaea = _argsPool.Rent();
-                    var realSaea = tcpSaea.Saea;
-                    realSaea.RemoteEndPoint = SocketUtil.GetEndPoint("127.0.0.1", port);
-                    tcpSaea.PrepareSAEABuffer(_firstPacket, _firstPacketLength);
-                    var ret = await _remote.ConnectAsync(tcpSaea);
-                    if (ret != SocketError.Success)
+                    var RemoteEndPoint = SocketUtil.GetEndPoint("127.0.0.1", port);
+                    await _remote.ConnectAsync(RemoteEndPoint);
+                    var ret = await _remote.FullSendTaskAsync(_firstPacket, 0, _firstPacketLength);
+                    if (ret <= 0)
                     {
                         Close();
                         return;
@@ -112,11 +106,6 @@ namespace Fuckshadows.Controller
                 {
                     Logging.LogUsefulException(e);
                     Close();
-                }
-                finally
-                {
-                    _argsPool.Return(tcpSaea);
-                    tcpSaea = null;
                 }
             }
 
@@ -130,52 +119,41 @@ namespace Fuckshadows.Controller
             // server recv -> local send
             private async Task Downstream()
             {
-                SaeaAwaitable serverRecvSaea = null;
-                SaeaAwaitable localSendSaea = null;
+                ArraySegment<byte> buf = default(ArraySegment<byte>);
                 try
                 {
                     while (IsRunning)
                     {
-                        serverRecvSaea = _argsPool.Rent();
-                        var token = await _remote.ReceiveTaskAsync(serverRecvSaea, RecvSize);
-                        var err = token.SocketError;
-                        var bytesRecved = token.BytesTotalTransferred;
-                        Logging.Debug($"Downstream server recv: {err},{bytesRecved}");
+                        buf = _segmentBufferManager.BorrowBuffer();
+                        var bytesRecved = await _remote.ReceiveAsync(buf, SocketFlags.None);
 
-                        if (err == SocketError.Success && bytesRecved <= 0)
+                        Logging.Debug($"Downstream server recv: {bytesRecved}");
+
+                        if (bytesRecved == 0)
                         {
                             _local.Shutdown(SocketShutdown.Send);
                             _localShutdown = true;
                             CheckClose();
                             return;
                         }
-                        if (err != SocketError.Success)
+                        else if (bytesRecved < 0)
                         {
-                            Logging.Debug($"Downstream server recv socket err: {err}");
                             Close();
                             return;
                         }
+
                         Debug.Assert(bytesRecved <= RecvSize);
 
-
-                        localSendSaea = _argsPool.Rent();
-                        Buffer.BlockCopy(serverRecvSaea.Saea.Buffer, 0, localSendSaea.Saea.Buffer, 0,
-                            bytesRecved);
-                        _argsPool.Return(serverRecvSaea);
-                        serverRecvSaea = null;
-
-                        token = await _local.FullSendTaskAsync(localSendSaea, bytesRecved);
-                        err = token.SocketError;
-                        var bytesSent = token.BytesTotalTransferred;
-                        Logging.Debug($"Downstream local send socket err: {err},{bytesSent}");
-                        if (err != SocketError.Success)
+                        var bytesSent = await _local.FullSendTaskAsync(buf.Array, 0, bytesRecved);
+                        Logging.Debug($"Downstream local send socket err: {bytesSent}");
+                        if (bytesSent <= 0)
                         {
                             Close();
                             return;
                         }
                         Debug.Assert(bytesSent == bytesRecved);
-                        _argsPool.Return(localSendSaea);
-                        localSendSaea = null;
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
                     }
                 }
                 catch (AggregateException agex)
@@ -193,59 +171,49 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(serverRecvSaea);
-                    serverRecvSaea = null;
-                    _argsPool.Return(localSendSaea);
-                    localSendSaea = null;
+                    if (buf != default(ArraySegment<byte>))
+                    {
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
+                    }
                 }
             }
 
             // local recv -> server send
             private async Task Upstream()
             {
-                SaeaAwaitable localRecvSaea = null;
-                SaeaAwaitable serverSendSaea = null;
+                ArraySegment<byte> buf = default(ArraySegment<byte>);
                 try
                 {
                     while (IsRunning)
                     {
-                        localRecvSaea = _argsPool.Rent();
-                        var token = await _local.ReceiveTaskAsync(localRecvSaea, RecvSize);
-                        var err = token.SocketError;
-                        var bytesRecved = token.BytesTotalTransferred;
-                        Logging.Debug($"Upstream local recv: {err},{bytesRecved}");
-                        if (err == SocketError.Success && bytesRecved <= 0)
+                        buf = _segmentBufferManager.BorrowBuffer();
+                        var bytesRecved = await _local.ReceiveAsync(buf, SocketFlags.None);
+
+                        Logging.Debug($"Upstream local recv: {bytesRecved}");
+                        if (bytesRecved == 0)
                         {
                             _remote.Shutdown(SocketShutdown.Send);
                             _remoteShutdown = true;
                             CheckClose();
                             return;
                         }
-                        if (err != SocketError.Success)
-                        {
-                            Logging.Debug($"Upstream local recv socket err: {err}");
-                            Close();
-                            return;
-                        }
-                        Debug.Assert(bytesRecved <= RecvSize);
-
-                        serverSendSaea = _argsPool.Rent();
-                        Buffer.BlockCopy(localRecvSaea.Saea.Buffer, 0, serverSendSaea.Saea.Buffer, 0,
-                            bytesRecved);
-                        _argsPool.Return(localRecvSaea);
-                        localRecvSaea = null;
-
-                        token = await _remote.FullSendTaskAsync(serverSendSaea, bytesRecved);
-                        err = token.SocketError;
-                        var bytesSent = token.BytesTotalTransferred;
-                        Logging.Debug($"Upstream server send: {err},{bytesSent}");
-                        if (err != SocketError.Success)
+                        else if (bytesRecved < 0)
                         {
                             Close();
                             return;
                         }
-                        _argsPool.Return(serverSendSaea);
-                        serverSendSaea = null;
+
+                        var bytesSent = await _remote.FullSendTaskAsync(buf.Array, 0, bytesRecved);
+
+                        Logging.Debug($"Upstream server send: {bytesSent}");
+                        if (bytesSent <= 0)
+                        {
+                            Close();
+                            return;
+                        }
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
                         Debug.Assert(bytesSent == bytesRecved);
                     }
                 }
@@ -264,10 +232,11 @@ namespace Fuckshadows.Controller
                 }
                 finally
                 {
-                    _argsPool.Return(localRecvSaea);
-                    localRecvSaea = null;
-                    _argsPool.Return(serverSendSaea);
-                    serverSendSaea = null;
+                    if (buf != default(ArraySegment<byte>))
+                    {
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
+                    }
                 }
             }
 

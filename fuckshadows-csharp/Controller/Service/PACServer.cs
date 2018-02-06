@@ -193,31 +193,27 @@ namespace Fuckshadows.Controller
         {
             try
             {
-                using (var saea = new SaeaAwaitable())
+                string pac = GetPACContent();
+
+                IPEndPoint localEndPoint = (IPEndPoint) socket.LocalEndPoint;
+
+                string proxy = GetPACAddress(firstPacket, length, localEndPoint, useSocks);
+
+                pac = pac.Replace("__PROXY__", proxy);
+
+                string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
+                byte[] response = Encoding.UTF8.GetBytes(text);
+
+                var bytesSent = await socket.FullSendTaskAsync(response, 0, response.Length);
+
+                if (bytesSent <= 0)
                 {
-                    string pac = GetPACContent();
-
-                    IPEndPoint localEndPoint = (IPEndPoint) socket.LocalEndPoint;
-
-                    string proxy = GetPACAddress(firstPacket, length, localEndPoint, useSocks);
-
-                    pac = pac.Replace("__PROXY__", proxy);
-
-                    string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
-                    byte[] response = Encoding.UTF8.GetBytes(text);
-                    saea.Saea.SetBuffer(response, 0, response.Length);
-                    var ret = await socket.FullSendTaskAsync(saea, response.Length);
-                    var err = ret.SocketError;
-                    var bytesSent = ret.BytesTotalTransferred;
-                    if (err != SocketError.Success)
-                    {
-                        Logging.Error($"PAC send err: {err}");
-                        socket.Close();
-                        return;
-                    }
-                    Debug.Assert(bytesSent == response.Length);
-                    socket.Shutdown(SocketShutdown.Send);
+                    Logging.Error($"PAC send err: {bytesSent}");
+                    socket.Close();
+                    return;
                 }
+                Debug.Assert(bytesSent == response.Length);
+                socket.Shutdown(SocketShutdown.Send);
             }
             catch (Exception e)
             {
