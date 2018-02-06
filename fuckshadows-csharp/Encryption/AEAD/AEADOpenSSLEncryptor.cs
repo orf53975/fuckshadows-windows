@@ -1,8 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
 using Fuckshadows.Encryption.Exception;
 
 namespace Fuckshadows.Encryption.AEAD
@@ -19,6 +16,8 @@ namespace Fuckshadows.Encryption.AEAD
         private IntPtr _encryptCtx = IntPtr.Zero;
         private IntPtr _decryptCtx = IntPtr.Zero;
 
+        private IntPtr _cipherInfoPtr = IntPtr.Zero;
+
         public AEADOpenSSLEncryptor(string method, string password)
             : base(method, password)
         {
@@ -31,7 +30,7 @@ namespace Fuckshadows.Encryption.AEAD
             {"aes-128-gcm", new EncryptorInfo("aes-128-gcm", 16, 16, 12, 16, CIPHER_AES)},
             {"aes-192-gcm", new EncryptorInfo("aes-192-gcm", 24, 24, 12, 16, CIPHER_AES)},
             {"aes-256-gcm", new EncryptorInfo("aes-256-gcm", 32, 32, 12, 16, CIPHER_AES)},
-            {"chacha20-ietf-poly1305", new EncryptorInfo("chacha20-poly1305", 32, 32, 12, 16, CIPHER_CHACHA20IETFPOLY1305)}
+            //{"chacha20-ietf-poly1305", new EncryptorInfo("chacha20-poly1305", 32, 32, 12, 16, CIPHER_CHACHA20IETFPOLY1305)}
         };
 
         public static List<string> SupportedCiphers()
@@ -47,8 +46,8 @@ namespace Fuckshadows.Encryption.AEAD
         public override void InitCipher(byte[] salt, bool isEncrypt, bool isUdp)
         {
             base.InitCipher(salt, isEncrypt, isUdp);
-            IntPtr cipherInfo = OpenSSL.GetCipherInfo(_innerLibName);
-            if (cipherInfo == IntPtr.Zero) throw new System.Exception("openssl: cipher not found");
+            _cipherInfoPtr = OpenSSL.GetCipherInfo(_innerLibName);
+            if (_cipherInfoPtr == IntPtr.Zero) throw new System.Exception("openssl: cipher not found");
             IntPtr ctx = OpenSSL.EVP_CIPHER_CTX_new();
             if (ctx == IntPtr.Zero) throw new System.Exception("openssl: fail to create ctx");
 
@@ -80,7 +79,7 @@ namespace Fuckshadows.Encryption.AEAD
                     isEncrypt ? _opensslEncSubkey : _opensslDecSubkey);
             }
 
-            var ret = OpenSSL.EVP_CipherInit_ex(ctx, cipherInfo, IntPtr.Zero, null, null,
+            var ret = OpenSSL.EVP_CipherInit_ex(ctx, _cipherInfoPtr, IntPtr.Zero, null, null,
                 isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
             if (ret != 1) throw new System.Exception("openssl: fail to init ctx");
 
@@ -94,87 +93,69 @@ namespace Fuckshadows.Encryption.AEAD
             ret = OpenSSL.EVP_CipherInit_ex(ctx, IntPtr.Zero, IntPtr.Zero,
                 isEncrypt ? _opensslEncSubkey : _opensslDecSubkey,
                 null,
-                OpenSSL.OPENSSL_CIPHER_ENC_UNCHANGED);
+                isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
             if (ret != 1) throw new System.Exception("openssl: cannot set key");
             OpenSSL.EVP_CIPHER_CTX_set_padding(ctx, 0);
         }
 
         public override void cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen)
         {
+            OpenSSL.SetCtxNonce(_encryptCtx, _encNonce, true);
+            // buf: all plaintext
+            // outbuf: ciphertext + tag
+            int ret;
+            int tmpLen = 0;
+            clen = 0;
+            var tagBuf = new byte[tagLen];
 
-            using (var ms = new MemoryStream())
+            ret = OpenSSL.EVP_CipherUpdate(_encryptCtx, ciphertext, out tmpLen,
+                plaintext, (int) plen);
+            if (ret != 1) throw new CryptoErrorException("openssl: fail to encrypt AEAD");
+            clen += (uint) tmpLen;
+            // For AEAD cipher, it should not output anything
+            ret = OpenSSL.EVP_CipherFinal_ex(_encryptCtx, ciphertext, ref tmpLen);
+            if (ret != 1) throw new CryptoErrorException("openssl: fail to finalize AEAD");
+            if (tmpLen > 0)
             {
-                OpenSSL.ResetCtxNonce(_encryptCtx, _encNonce);
-                // buf: all plaintext
-                // outbuf: ciphertext + tag
-                int ret;
-                int tmpLen = 0;
-                clen = 0;
-                var tmpBuf = new byte[ciphertext.Length];
-
-                ret = OpenSSL.EVP_CipherUpdate(_encryptCtx, tmpBuf, out tmpLen,
-                    plaintext, (int) plen);
-                if (ret != 1) throw new CryptoErrorException("openssl: fail to encrypt AEAD");
-                ms.Write(tmpBuf, 0, tmpLen);
-                clen += (uint)tmpLen;
-
-                ret = OpenSSL.EVP_CipherFinal_ex(_encryptCtx, tmpBuf, ref tmpLen);
-                if (ret != 1) throw new CryptoErrorException("openssl: fail to finalize AEAD");
-                if (tmpLen > 0)
-                {
-                    ms.Write(tmpBuf, 0, tmpLen);
-                    clen += (uint)tmpLen;
-                }
-
-                OpenSSL.AEADGetTag(_encryptCtx, tmpBuf, tagLen);
-                ms.Write(tmpBuf, 0, tagLen);
-                clen += (uint) tagLen;
-
-                var outArr = ms.ToArray();
-                Array.Copy(outArr, 0, ciphertext, 0, outArr.Length);
+                throw new System.Exception("openssl: fail to finish AEAD");
             }
+
+            OpenSSL.AEADGetTag(_encryptCtx, tagBuf, tagLen);
+            Array.Copy(tagBuf, 0, ciphertext, clen, tagLen);
+            clen += (uint) tagLen;
         }
 
         public override void cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen)
         {
-            using (var ms = new MemoryStream())
+            OpenSSL.SetCtxNonce(_decryptCtx, _decNonce, false);
+            // buf: ciphertext + tag
+            // outbuf: plaintext
+            int ret;
+            int tmpLen = 0;
+            plen = 0;
+
+            // split tag
+            byte[] tagbuf = new byte[tagLen];
+            Array.Copy(ciphertext, (int) (clen - tagLen), tagbuf, 0, tagLen);
+            OpenSSL.AEADSetTag(_decryptCtx, tagbuf, tagLen);
+
+            ret = OpenSSL.EVP_CipherUpdate(_decryptCtx,
+                plaintext, out tmpLen, ciphertext, (int) (clen - tagLen));
+            if (ret != 1) throw new CryptoErrorException("openssl: fail to decrypt AEAD");
+            plen += (uint) tmpLen;
+
+            // For AEAD cipher, it should not output anything
+            ret = OpenSSL.EVP_CipherFinal_ex(_decryptCtx, plaintext, ref tmpLen);
+            if (ret <= 0)
             {
-                OpenSSL.ResetCtxNonce(_decryptCtx, _decNonce);
-                // buf: ciphertext + tag
-                // outbuf: plaintext
-                int ret;
-                int tmpLen = 0;
-                plen = 0;
-                var tmpBuf = new byte[plaintext.Length];
-
-                // split tag
-                byte[] tagbuf = new byte[tagLen];
-                Array.Copy(ciphertext, (int) (clen - tagLen), tagbuf, 0, tagLen);
-                OpenSSL.AEADSetTag(_decryptCtx, tagbuf, tagLen);
-
-                ret = OpenSSL.EVP_CipherUpdate(_decryptCtx,
-                    tmpBuf, out tmpLen, ciphertext, (int) (clen - tagLen));
-                if (ret != 1) throw new CryptoErrorException("openssl: fail to decrypt AEAD");
-                ms.Write(tmpBuf, 0, tmpLen);
-                plen += (uint)tmpLen;
-
-                ret = OpenSSL.EVP_CipherFinal_ex(_decryptCtx, tmpBuf, ref tmpLen);
-                if (ret <= 0)
-                {
-                    // If this is not successful authenticated
-                    throw new CryptoErrorException($"ret is {ret}");
-                }
-                if (tmpLen > 0)
-                {
-                    ms.Write(tmpBuf, 0, tmpLen);
-                    plen += (uint)tmpLen;
-                }
-
-                var outArr = ms.ToArray();
-                Array.Copy(outArr, 0, plaintext, 0, outArr.Length);
+                // If this is not successful authenticated
+                throw new CryptoErrorException($"ret is {ret}");
             }
 
-
+            if (tmpLen > 0)
+            {
+                throw new System.Exception("openssl: fail to finish AEAD");
+            }
         }
 
         #region IDisposable

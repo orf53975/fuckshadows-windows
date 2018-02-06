@@ -13,6 +13,7 @@ namespace Fuckshadows.Encryption.Stream
         const int CIPHER_AES = 2;
         const int CIPHER_CAMELLIA = 3;
         const int CIPHER_BLOWFISH = 4;
+        const int CIPHER_CHACHA20_IETF = 5;
 
         private IntPtr _encryptCtx = IntPtr.Zero;
         private IntPtr _decryptCtx = IntPtr.Zero;
@@ -22,8 +23,7 @@ namespace Fuckshadows.Encryption.Stream
         {
         }
 
-        // XXX: name=chacha20,blkSz=1,keyLen=32,ivLen=16, thus unusable
-        //      name=RC4,blkSz=1,keyLen=16,ivLen=0, do NOT pass IV to it
+        // XXX: name=RC4,blkSz=1,keyLen=16,ivLen=0, do NOT pass IV to it
         private static readonly Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo>
         {
             { "aes-128-cfb", new EncryptorInfo("AES-128-CFB", 16, 16, CIPHER_AES) },
@@ -36,7 +36,9 @@ namespace Fuckshadows.Encryption.Stream
             { "camellia-128-cfb", new EncryptorInfo("CAMELLIA-128-CFB", 16, 16, CIPHER_CAMELLIA) },
             { "camellia-192-cfb", new EncryptorInfo("CAMELLIA-192-CFB", 24, 16, CIPHER_CAMELLIA) },
             { "camellia-256-cfb", new EncryptorInfo("CAMELLIA-256-CFB", 32, 16, CIPHER_CAMELLIA) },
-            { "rc4-md5", new EncryptorInfo("RC4", 16, 16, CIPHER_RC4) }
+            { "rc4-md5", new EncryptorInfo("RC4", 16, 16, CIPHER_RC4) },
+            // it's using ivLen=16, not compatible
+            //{ "chacha20-ietf", new EncryptorInfo("chacha20", 32, 12, CIPHER_CHACHA20_IETF) }
         };
 
         public static List<string> SupportedCiphers()

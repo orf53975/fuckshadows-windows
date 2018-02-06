@@ -453,7 +453,7 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
-                    circularRecvSaea.ClearAndResetSaeaProperties();
+                    circularRecvSaea.Saea.ResetSAEAProperties(true);
                 }
                 _argsPool.Return(circularRecvSaea);
                 circularRecvSaea = null;

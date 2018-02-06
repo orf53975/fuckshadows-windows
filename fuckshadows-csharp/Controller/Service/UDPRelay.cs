@@ -141,8 +141,9 @@ namespace Fuckshadows.Controller
                         byte[] dataOut = new byte[bytesReceived];
                         encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
                         encryptor.DecryptUDP(downSaea.Saea.Buffer, bytesReceived, dataOut, out outlen);
-                        downSaea.ClearAndResetSaeaProperties();
-                        
+
+                        downSaea.Saea.ResetSAEAProperties(true);
+
                         byte[] buf = downSaea.Saea.Buffer;
                         buf[0] = buf[1] = buf[2] = 0;
                         Array.Copy(dataOut, 0, buf, 3, outlen);
