@@ -6,106 +6,81 @@ using System.Threading.Tasks;
 
 namespace Fuckshadows.Util.Sockets
 {
+    // https://blogs.msdn.microsoft.com/pfxteam/2011/12/15/awaiting-socket-operations/
     public sealed class SaeaAwaiter : INotifyCompletion
     {
-        // https://blogs.msdn.microsoft.com/pfxteam/2011/12/15/awaiting-socket-operations/
-
-        /// <summary>
-        ///     A sentinel delegate that does nothing.
-        /// </summary>
         private static readonly Action SENTINEL = delegate { };
-
-        /// <summary>
-        ///     The asynchronous socket arguments to await.
-        /// </summary>
         private readonly SaeaAwaitable _awaitable;
-
-        /// <summary>
-        ///     The continuation delegate that will be called after the current operation is
-        ///     awaited.
-        /// </summary>
         private Action _continuation;
 
-        /// <summary>
-        ///     An object to synchronize access to the awaiter for validations.
-        /// </summary>
-        public object SyncRoot { get; } = new object();
-
-        /// <summary>
-        ///     A value indicating whether the asynchronous operation is completed.
-        /// </summary>
-        public bool IsCompleted { get; private set; } = true;
-
-        /// <summary>
-        ///     Initializes a new instance of the <see cref="SaeaAwaiter" /> class.
-        /// </summary>
-        /// <param name="awaitable">
-        ///     The asynchronous socket arguments to await.
-        /// </param>
         public SaeaAwaiter(SaeaAwaitable awaitable)
         {
             _awaitable = awaitable;
-            _awaitable.Saea.Completed += this.OnSaeaOnCompleted;
+            _awaitable.Saea.Completed += OnSaeaCompleted;
         }
 
-        private void OnSaeaOnCompleted(object sender, SocketAsyncEventArgs args)
+        private void OnSaeaCompleted(object sender, SocketAsyncEventArgs args)
         {
             var continuation = _continuation ?? Interlocked.CompareExchange(ref _continuation, SENTINEL, null);
 
             if (continuation != null)
             {
-                Complete();
+                var syncContext = _awaitable.ShouldCaptureContext
+                    ? this.SyncContext
+                    : null;
+
+                this.Complete();
 
                 if (continuation != SENTINEL)
                 {
-                    Task.Factory.StartNew(continuation, TaskCreationOptions.PreferFairness);
+                    if (syncContext != null)
+                        syncContext.Post(s => continuation.Invoke(), null);
+                    else
+                        continuation.Invoke();
                 }
             }
         }
 
-        /// <summary>
-        ///     Gets the result of the asynchronous socket operation.
-        /// </summary>
-        /// <returns>
-        ///     A <see cref="SocketError" /> that represents the result of the socket operations.
-        /// </returns>
+        internal object SyncRoot { get; } = new object();
+
+        internal SynchronizationContext SyncContext { private get; set; }
+
         public SocketError GetResult()
         {
             return _awaitable.Saea.SocketError;
         }
 
-        /// <summary>
-        ///     Gets invoked when the asynchronous operation is completed and runs the specified
-        ///     delegate as continuation.
-        /// </summary>
-        /// <param name="continuation">
-        ///     Continuation to run.
-        /// </param>
-        public void OnCompleted(Action continuation)
+        void INotifyCompletion.OnCompleted(Action continuation)
         {
             if (_continuation == SENTINEL
                 || Interlocked.CompareExchange(ref _continuation, continuation, null) == SENTINEL)
             {
-                Complete();
+                this.Complete();
 
-                Task.Factory.StartNew(continuation, TaskCreationOptions.PreferFairness);
+                if (!_awaitable.ShouldCaptureContext)
+                    Task.Run(continuation);
+                else
+                    Task.Factory.StartNew(
+                        continuation,
+                        CancellationToken.None,
+                        TaskCreationOptions.DenyChildAttach,
+                        TaskScheduler.FromCurrentSynchronizationContext());
             }
         }
 
-        /// <summary>
-        ///     Sets <see cref="IsCompleted" /> to true />
-        /// </summary>
+        public bool IsCompleted { get; private set; } = true;
+
         internal void Complete()
         {
             if (!IsCompleted)
             {
+                if (_awaitable.ShouldCaptureContext)
+                    SyncContext = null;
+
                 IsCompleted = true;
             }
         }
 
-        /// <summary>
-        ///     Resets this awaiter for re-use.
-        /// </summary>
         internal void Reset()
         {
             IsCompleted = false;

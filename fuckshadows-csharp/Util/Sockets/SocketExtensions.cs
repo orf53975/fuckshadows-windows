@@ -101,10 +101,10 @@ namespace Fuckshadows.Util.Sockets
         private static SaeaAwaitable OperateAsync(Socket socket, SaeaAwaitable awaitable, Func<Socket, SaeaAwaitable, bool> operation)
         {
             if (socket == null)
-                throw new ArgumentNullException(nameof(socket));
+                throw new ArgumentNullException("socket");
 
             if (awaitable == null)
-                throw new ArgumentNullException(nameof(awaitable));
+                throw new ArgumentNullException("awaitable");
 
             var awaiter = awaitable.GetAwaiter();
 
@@ -112,9 +112,11 @@ namespace Fuckshadows.Util.Sockets
             {
                 if (!awaiter.IsCompleted)
                     throw new InvalidOperationException(
-                        "A socket operation is already in progress using the same await-able SAEA.");
+                        "A socket operation is already in progress using the same awaitable SAEA.");
 
                 awaiter.Reset();
+                if (awaitable.ShouldCaptureContext)
+                    awaiter.SyncContext = SynchronizationContext.Current;
             }
 
             try
