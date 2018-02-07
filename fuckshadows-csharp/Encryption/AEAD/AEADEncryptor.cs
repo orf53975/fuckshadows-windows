@@ -61,6 +61,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         protected byte[] _encNonce;
         protected byte[] _decNonce;
+
         // Is first packet
         protected bool _decryptSaltReceived;
         protected bool _encryptSaltSent;
@@ -129,23 +130,23 @@ namespace Fuckshadows.Encryption.AEAD
             Sodium.sodium_increment(isEncrypt ? _encNonce : _decNonce, nonceLen);
         }
 
-        public virtual void InitCipher(byte[] salt, bool isEncrypt, bool isUdp)
+        public virtual void InitCipher(ArraySegment<byte> salt, bool isEncrypt, bool isUdp)
         {
             if (isEncrypt) {
                 _encryptSalt = new byte[saltLen];
-                Array.Copy(salt, _encryptSalt, saltLen);
+                Buffer.BlockCopy(salt.Array, salt.Offset, _encryptSalt, 0, saltLen);
             } else {
                 _decryptSalt = new byte[saltLen];
-                Array.Copy(salt, _decryptSalt, saltLen);
+                Buffer.BlockCopy(salt.Array, salt.Offset, _decryptSalt, 0, saltLen);
             }
-            Logging.DumpByteArray("Salt", salt, saltLen);
+            Logging.DumpByteArraySegment("Salt", salt, saltLen);
         }
 
-        public static void randBytes(byte[] buf, int length) { RNG.GetBytes(buf, length); }
+        public static void randBytes(ArraySegment<byte> buf, int length) { RNG.GetBytes(buf.Array,buf.Offset, length); }
 
-        public abstract void cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen);
+        public abstract void cipherEncrypt(ArraySegment<byte> plaintext, uint plen, ArraySegment<byte> ciphertext, ref uint clen);
 
-        public abstract void cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen);
+        public abstract void cipherDecrypt(ArraySegment<byte> ciphertext, uint clen, ArraySegment<byte> plaintext, ref uint plen);
 
         #region TCP
 
@@ -153,16 +154,17 @@ namespace Fuckshadows.Encryption.AEAD
         {
             Debug.Assert(_encCircularBuffer != null, "_encCircularBuffer != null");
 
-            _encCircularBuffer.Put(buf, 0, length);
+            _encCircularBuffer.Put(buf.Array, buf.Offset, length);
             outlength = 0;
             Logging.Debug("---Start Encryption");
             if (! _encryptSaltSent) {
                 _encryptSaltSent = true;
                 // Generate salt
                 byte[] saltBytes = new byte[saltLen];
-                randBytes(saltBytes, saltLen);
-                InitCipher(saltBytes, true, false);
-                Array.Copy(saltBytes, 0, outbuf, 0, saltLen);
+                var saltSeg = saltBytes.AsArraySegment(saltLen);
+                randBytes(saltSeg, saltLen);
+                InitCipher(saltSeg, true, false);
+                ArraySegmentExtensions.BlockCopy(saltSeg, 0, outbuf, 0, saltLen);
                 outlength = saltLen;
                 Logging.Debug($"_encryptSaltSent outlength {outlength}");
             }
@@ -178,11 +180,12 @@ namespace Fuckshadows.Encryption.AEAD
                 byte[] encAddrBufBytes = new byte[garbage.Length + AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES];
                 byte[] addrBytes = _encCircularBuffer.Get(AddrBufLength);
                 byte[] addrWithGarbage = new byte[AddrBufLength + garbage.Length];
+                var encAddrBufSeg = encAddrBufBytes.AsArraySegment();
                 PerfByteCopy(garbage, 0, addrWithGarbage, 0, garbage.Length);
                 PerfByteCopy(addrBytes, 0, addrWithGarbage, garbage.Length, AddrBufLength);
-                ChunkEncrypt(addrWithGarbage, AddrBufLength + garbage.Length, encAddrBufBytes, out encAddrBufLength);
+                ChunkEncrypt(addrWithGarbage.AsArraySegment(), AddrBufLength + garbage.Length, encAddrBufSeg, out encAddrBufLength);
                 Debug.Assert(encAddrBufLength == garbage.Length + AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES);
-                Array.Copy(encAddrBufBytes, 0, outbuf, outlength, encAddrBufLength);
+                ArraySegmentExtensions.BlockCopy(encAddrBufSeg, 0, outbuf, outlength, encAddrBufLength);
                 outlength += encAddrBufLength;
                 Logging.Debug($"_tcpRequestSent outlength {outlength}");
             }
@@ -203,10 +206,12 @@ namespace Fuckshadows.Encryption.AEAD
                 chunklength += garbageLength;
 
                 int encChunkLength;
+                var chunkWithGarbageSeg = chunkWithGarbage.AsArraySegment();
                 byte[] encChunkBytes = new byte[chunklength + tagLen * 2 + CHUNK_LEN_BYTES];
-                ChunkEncrypt(chunkWithGarbage, chunklength, encChunkBytes, out encChunkLength);
+                var encChunkBytesSeg = encChunkBytes.AsArraySegment();
+                ChunkEncrypt(chunkWithGarbageSeg, chunklength, encChunkBytesSeg, out encChunkLength);
                 Debug.Assert(encChunkLength == chunklength + tagLen * 2 + CHUNK_LEN_BYTES);
-                PerfByteCopy(encChunkBytes, 0, outbuf, outlength, encChunkLength);
+                ArraySegmentExtensions.BlockCopy(encChunkBytesSeg, 0, outbuf, outlength, encChunkLength);
                 outlength += encChunkLength;
                 Logging.Debug("chunks enc outlength " + outlength);
                 bufSize = (uint)_encCircularBuffer.Size;
@@ -224,7 +229,7 @@ namespace Fuckshadows.Encryption.AEAD
             int bufSize;
             outlength = 0;
             // drop all into buffer
-            _decCircularBuffer.Put(buf, 0, length);
+            _decCircularBuffer.Put(buf.Array, buf.Offset, length);
 
             Logging.Debug("---Start Decryption");
             if (! _decryptSaltReceived) {
@@ -236,7 +241,7 @@ namespace Fuckshadows.Encryption.AEAD
                 }
                 _decryptSaltReceived = true;
                 byte[] salt = _decCircularBuffer.Get(saltLen);
-                InitCipher(salt, false, false);
+                InitCipher(salt.AsArraySegment(), false, false);
                 Logging.Debug("get salt len " + saltLen);
             }
 
@@ -258,10 +263,12 @@ namespace Fuckshadows.Encryption.AEAD
                 #region Chunk Decryption
 
                 byte[] encLenBytes = _decCircularBuffer.Peek(CHUNK_LEN_BYTES + tagLen);
+                var encLenBytesSeg = encLenBytes.AsArraySegment();
                 uint decChunkLenLength = 0;
                 byte[] decChunkLenBytes = new byte[CHUNK_LEN_BYTES];
+                var decChunkLenBytesSeg = decChunkLenBytes.AsArraySegment();
                 // try to dec chunk len
-                cipherDecrypt(encLenBytes, CHUNK_LEN_BYTES + (uint)tagLen, decChunkLenBytes, ref decChunkLenLength);
+                cipherDecrypt(encLenBytesSeg, CHUNK_LEN_BYTES + (uint)tagLen, decChunkLenBytesSeg, ref decChunkLenLength);
                 Debug.Assert(decChunkLenLength == CHUNK_LEN_BYTES);
                 // finally we get the real chunk len
                 ushort chunkLen = (ushort) IPAddress.NetworkToHostOrder((short)BitConverter.ToUInt16(decChunkLenBytes, 0));
@@ -282,9 +289,11 @@ namespace Fuckshadows.Encryption.AEAD
                 // drop chunk len and its tag from buffer
                 _decCircularBuffer.Skip(CHUNK_LEN_BYTES + tagLen);
                 byte[] encChunkBytes = _decCircularBuffer.Get(chunkLen + tagLen);
+                var encChunkBytesSeg = encChunkBytes.AsArraySegment();
                 byte[] decChunkBytes = new byte[chunkLen];
+                var decChunkBytesSeg = decChunkBytes.AsArraySegment();
                 uint decChunkLen = 0;
-                cipherDecrypt(encChunkBytes, chunkLen + (uint)tagLen, decChunkBytes, ref decChunkLen);
+                cipherDecrypt(encChunkBytesSeg, chunkLen + (uint)tagLen, decChunkBytesSeg, ref decChunkLen);
                 Debug.Assert(decChunkLen == chunkLen);
                 IncrementNonce(false);
 
@@ -293,7 +302,7 @@ namespace Fuckshadows.Encryption.AEAD
                 int garbageLen = decChunkBytes[0] + FS_GARBAGE_LEN;
 
                 // output to outbuf
-                PerfByteCopy(decChunkBytes, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
+                ArraySegmentExtensions.BlockCopy(decChunkBytesSeg, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
                 outlength += (int)decChunkLen - garbageLen;
                 Logging.Debug("aead dec outlength " + outlength);
                 bufSize = _decCircularBuffer.Size;
@@ -315,23 +324,27 @@ namespace Fuckshadows.Encryption.AEAD
             randBytes(outbuf, saltLen);
             InitCipher(outbuf, true, true);
             uint olen = 0;
-            lock (_udpTmpBuf) {
-                cipherEncrypt(buf, (uint) length, _udpTmpBuf, ref olen);
+            lock (_udpTmpBuf)
+            {
+                var tmpSeg = _udpTmpBuf.AsArraySegment();
+                cipherEncrypt(buf, (uint) length, tmpSeg, ref olen);
                 Debug.Assert(olen == length + tagLen);
-                PerfByteCopy(_udpTmpBuf, 0, outbuf, saltLen, (int) olen);
+                ArraySegmentExtensions.BlockCopy(tmpSeg, 0, outbuf, saltLen, (int) olen);
                 outlength = (int) (saltLen + olen);
             }
         }
 
-        public override void DecryptUDP(ArraySegment<byte> arraySegment, int length, ArraySegment<byte> segment, out int outlength)
+        public override void DecryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             InitCipher(buf, false, true);
             uint olen = 0;
-            lock (_udpTmpBuf) {
+            lock (_udpTmpBuf)
+            {
+                var tmpSeg = _udpTmpBuf.AsArraySegment();
                 // copy remaining data to first pos
-                PerfByteCopy(buf, saltLen, buf, 0, length - saltLen);
-                cipherDecrypt(buf, (uint) (length - saltLen), _udpTmpBuf, ref olen);
-                PerfByteCopy(_udpTmpBuf, 0, outbuf, 0, (int) olen);
+                ArraySegmentExtensions.BlockCopy(buf, saltLen, buf, 0, length - saltLen);
+                cipherDecrypt(buf, (uint) (length - saltLen), tmpSeg, ref olen);
+                ArraySegmentExtensions.BlockCopy(tmpSeg, 0, outbuf, 0, (int) olen);
                 outlength = (int) olen;
             }
         }
@@ -339,7 +352,7 @@ namespace Fuckshadows.Encryption.AEAD
         #endregion
 
         // we know the plaintext length before encryption, so we can do it in one operation
-        private void ChunkEncrypt(byte[] plaintext, int plainLen, byte[] ciphertext, out int cipherLen)
+        private void ChunkEncrypt(ArraySegment<byte> plaintext, int plainLen, ArraySegment<byte> ciphertext, out int cipherLen)
         {
             // already take CHUNK_MAX_LEN_WITH_GARBAGE into account outside
             if (plainLen <= 0 || plainLen > CHUNK_LEN_MASK) {
@@ -348,22 +361,25 @@ namespace Fuckshadows.Encryption.AEAD
 
             // encrypt len
             byte[] encLenBytes = new byte[CHUNK_LEN_BYTES + tagLen];
+            var encLenBytesSeg = encLenBytes.AsArraySegment();
             uint encChunkLenLength = 0;
             byte[] lenbuf = BitConverter.GetBytes((ushort) IPAddress.HostToNetworkOrder((short)plainLen));
-            cipherEncrypt(lenbuf, CHUNK_LEN_BYTES, encLenBytes, ref encChunkLenLength);
+            var lenbufSeg = lenbuf.AsArraySegment();
+            cipherEncrypt(lenbufSeg, CHUNK_LEN_BYTES, encLenBytesSeg, ref encChunkLenLength);
             Debug.Assert(encChunkLenLength == CHUNK_LEN_BYTES + tagLen);
             IncrementNonce(true);
 
             // encrypt corresponding data
             byte[] encBytes = new byte[plainLen + tagLen];
+            var encBytesSeg = encBytes.AsArraySegment();
             uint encBufLength = 0;
-            cipherEncrypt(plaintext, (uint) plainLen, encBytes, ref encBufLength);
+            cipherEncrypt(plaintext, (uint) plainLen, encBytesSeg, ref encBufLength);
             Debug.Assert(encBufLength == plainLen + tagLen);
             IncrementNonce(true);
 
             // construct outbuf
-            Array.Copy(encLenBytes, 0, ciphertext, 0, (int) encChunkLenLength);
-            PerfByteCopy(encBytes, 0, ciphertext, (int) encChunkLenLength, (int) encBufLength);
+            ArraySegmentExtensions.BlockCopy(encLenBytesSeg, 0, ciphertext, 0, (int) encChunkLenLength);
+            ArraySegmentExtensions.BlockCopy(encBytesSeg, 0, ciphertext, (int) encChunkLenLength, (int) encBufLength);
             cipherLen = (int) (encChunkLenLength + encBufLength);
         }
 

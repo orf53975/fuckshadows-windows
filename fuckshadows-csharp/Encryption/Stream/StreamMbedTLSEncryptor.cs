@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 using Fuckshadows.Encryption.Exception;
+using Fuckshadows.Util.Sockets.Buffer;
 
 
 namespace Fuckshadows.Encryption.Stream
@@ -17,8 +19,11 @@ namespace Fuckshadows.Encryption.Stream
         private IntPtr _encryptCtx = IntPtr.Zero;
         private IntPtr _decryptCtx = IntPtr.Zero;
 
-        public StreamMbedTLSEncryptor(string method, string password)
-            : base(method, password)
+        private ArraySegment<byte> inBytesSeg;
+        private ArraySegment<byte> outBytesSeg;
+
+        public StreamMbedTLSEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
         }
 
@@ -46,7 +51,7 @@ namespace Fuckshadows.Encryption.Stream
             return _ciphers;
         }
 
-        protected override void initCipher(byte[] iv, bool isEncrypt)
+        protected override void initCipher(ArraySegment<byte> iv, bool isEncrypt)
         {
             base.initCipher(iv, isEncrypt);
             IntPtr ctx = Marshal.AllocHGlobal(MbedTLS.cipher_get_size_ex());
@@ -64,7 +69,7 @@ namespace Fuckshadows.Encryption.Stream
                 byte[] temp = new byte[keyLen + ivLen];
                 realkey = new byte[keyLen];
                 Array.Copy(_key, 0, temp, 0, keyLen);
-                Array.Copy(iv, 0, temp, keyLen, ivLen);
+                Array.Copy(isEncrypt?_encryptIV:_decryptIV, 0, temp, keyLen, ivLen);
                 realkey = MbedTLS.MD5(temp);
             }
             else
@@ -88,14 +93,16 @@ namespace Fuckshadows.Encryption.Stream
             if (MbedTLS.cipher_setkey(ctx, realkey, keyLen * 8,
                 isEncrypt ? MbedTLS.MBEDTLS_ENCRYPT : MbedTLS.MBEDTLS_DECRYPT) != 0 )
                 throw new System.Exception("Cannot set mbed TLS cipher key");
-            if (MbedTLS.cipher_set_iv(ctx, iv, ivLen) != 0)
+            if (MbedTLS.cipher_set_iv(ctx, isEncrypt?_encryptIV:_decryptIV, ivLen) != 0)
                 throw new System.Exception("Cannot set mbed TLS cipher IV");
             if (MbedTLS.cipher_reset(ctx) != 0)
                 throw new System.Exception("Cannot finalize mbed TLS cipher context");
         }
 
-        protected override void cipherUpdate(bool isEncrypt, int length, byte[] buf, byte[] outbuf)
+        protected override void cipherUpdate(bool isEncrypt, int length, ArraySegment<byte> buf, ArraySegment<byte> outbuf)
         {
+            byte[] inBytes = new byte[length];
+            ArraySegmentExtensions.BlockCopy(buf, 0, inBytes.AsArraySegment(), );
             // C# could be multi-threaded
             if (_disposed)
             {

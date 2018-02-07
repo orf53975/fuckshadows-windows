@@ -12,6 +12,7 @@ using Fuckshadows.Model;
 using Fuckshadows.Properties;
 using Fuckshadows.Util;
 using Fuckshadows.Util.Sockets;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Controller
 {
@@ -203,8 +204,8 @@ namespace Fuckshadows.Controller
 
                 string text = string.Format(HTTP_OK_TEMPLATE, Encoding.UTF8.GetBytes(pac).Length) + pac;
                 byte[] response = Encoding.UTF8.GetBytes(text);
-
-                var bytesSent = await socket.FullSendTaskAsync(response, 0, response.Length);
+                var responseSeg = response.AsArraySegment(0, response.Length);
+                var bytesSent = await socket.FullSendTaskAsync(responseSeg, response.Length);
 
                 if (bytesSent <= 0)
                 {

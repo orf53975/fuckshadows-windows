@@ -16,6 +16,8 @@ namespace Fuckshadows.Encryption.Stream
         protected static byte[] _udpTmpBuf = new byte[65536];
 
         // every connection should create its own buffer
+        private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize);
+        private ByteCircularBuffer _decCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize);
 
         protected Dictionary<string, EncryptorInfo> ciphers;
 
@@ -86,20 +88,20 @@ namespace Fuckshadows.Encryption.Stream
             }
         }
 
-        protected virtual void initCipher(byte[] iv, bool isEncrypt)
+        protected virtual void initCipher(ArraySegment<byte> iv, bool isEncrypt)
         {
             if (isEncrypt) {
                 _encryptIV = new byte[ivLen];
-                Array.Copy(iv, _encryptIV, ivLen);
+                Buffer.BlockCopy(iv.Array,iv.Offset, _encryptIV,0, ivLen);
             } else {
                 _decryptIV = new byte[ivLen];
-                Array.Copy(iv, _decryptIV, ivLen);
+                Buffer.BlockCopy(iv.Array,iv.Offset, _decryptIV, 0,ivLen);
             }
         }
 
-        protected abstract void cipherUpdate(bool isEncrypt, int length, byte[] buf, byte[] outbuf);
+        protected abstract void cipherUpdate(bool isEncrypt, int length, ArraySegment<byte> buf, ArraySegment<byte> outbuf);
 
-        protected static void randBytes(byte[] buf, int length) { RNG.GetBytes(buf, length); }
+        protected static void randBytes(ArraySegment<byte> buf, int length) { RNG.GetBytes(buf.Array,buf.Offset, length); }
 
         #region TCP
 
@@ -107,30 +109,31 @@ namespace Fuckshadows.Encryption.Stream
         {
             int cipherOffset = 0;
             Debug.Assert(_encCircularBuffer != null, "_encCircularBuffer != null");
-            _encCircularBuffer.Put(buf, 0, length);
-            var tmp = BufferManager.BorrowBuffer();
+            _encCircularBuffer.Put(buf.Array, buf.Offset, length);
             if (! _encryptIVSent) {
                 // Generate IV
                 byte[] ivBytes = new byte[ivLen];
-                randBytes(ivBytes, ivLen);
-                initCipher(ivBytes, true);
+                var ivSeg = ivBytes.AsArraySegment(ivLen);
+                randBytes(ivSeg, ivLen);
+                initCipher(ivSeg, true);
                 
-                Array.Copy(ivBytes, 0, outbuf, 0, ivLen);
+                ArraySegmentExtensions.BlockCopy(ivSeg, 0, outbuf, 0, ivLen);
                 cipherOffset = ivLen;
                 _encryptIVSent = true;
             }
             int size = _encCircularBuffer.Size;
             byte[] plain = _encCircularBuffer.Get(size);
             byte[] cipher = new byte[size];
-            cipherUpdate(true, size, plain, cipher);
-            PerfByteCopy(cipher, 0, outbuf, cipherOffset, size);
+            var cipherSeg = cipher.AsArraySegment();
+            cipherUpdate(true, size, plain.AsArraySegment(), cipherSeg);
+            ArraySegmentExtensions.BlockCopy(cipherSeg, 0, outbuf, cipherOffset, size);
             outlength = size + cipherOffset;
         }
 
         public override void Decrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             Debug.Assert(_decCircularBuffer != null, "_circularBuffer != null");
-            _decCircularBuffer.Put(buf, 0, length);
+            _decCircularBuffer.Put(buf.Array, buf.Offset, length);
             if (! _decryptIVReceived) {
                 if (_decCircularBuffer.Size <= ivLen) {
                     // we need more data
@@ -140,10 +143,11 @@ namespace Fuckshadows.Encryption.Stream
                 // start decryption
                 _decryptIVReceived = true;
                 byte[] iv = _decCircularBuffer.Get(ivLen);
-                initCipher(iv, false);
+                initCipher(iv.AsArraySegment(), false);
             }
             byte[] cipher = _decCircularBuffer.ToArray();
-            cipherUpdate(false, cipher.Length, cipher, outbuf);
+            var cipherSeg = cipher.AsArraySegment();
+            cipherUpdate(false, cipher.Length, cipherSeg, outbuf);
             // move pointer only
             _decCircularBuffer.Skip(_decCircularBuffer.Size);
             outlength = cipher.Length;
@@ -159,10 +163,12 @@ namespace Fuckshadows.Encryption.Stream
             // Generate IV
             randBytes(outbuf, ivLen);
             initCipher(outbuf, true);
-            lock (_udpTmpBuf) {
-                cipherUpdate(true, length, buf, _udpTmpBuf);
+            lock (_udpTmpBuf)
+            {
+                var tmpSeg = _udpTmpBuf.AsArraySegment();
+                cipherUpdate(true, length, buf, tmpSeg);
                 outlength = length + ivLen;
-                PerfByteCopy(_udpTmpBuf, 0, outbuf, ivLen, length);
+                ArraySegmentExtensions.BlockCopy(tmpSeg, 0, outbuf, ivLen, length);
             }
         }
 
@@ -173,8 +179,9 @@ namespace Fuckshadows.Encryption.Stream
             outlength = length - ivLen;
             lock (_udpTmpBuf) {
                 // C# could be multi-threaded
-                PerfByteCopy(buf, ivLen, _udpTmpBuf, 0, length - ivLen);
-                cipherUpdate(false, length - ivLen, _udpTmpBuf, outbuf);
+                var tmpSeg = _udpTmpBuf.AsArraySegment();
+                ArraySegmentExtensions.BlockCopy(buf, ivLen, tmpSeg, 0, length - ivLen);
+                cipherUpdate(false, length - ivLen, tmpSeg, outbuf);
             }
         }
 

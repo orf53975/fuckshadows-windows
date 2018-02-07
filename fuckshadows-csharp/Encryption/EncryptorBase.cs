@@ -80,12 +80,12 @@ namespace Fuckshadows.Encryption
         {
             Method = method;
             Password = password;
-            BufferManager = bm;
+            SegBufferManager = bm;
         }
 
         protected string Method;
         protected string Password;
-        protected ISegmentBufferManager BufferManager;
+        protected ISegmentBufferManager SegBufferManager;
 
         public abstract void Encrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 

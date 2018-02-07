@@ -95,18 +95,18 @@ namespace Fuckshadows.Controller
             {
                 Interlocked.Exchange(ref _state, _running);
                 ArraySegment<byte> buf = default(ArraySegment<byte>);
-                byte[] dataOut = new byte[1500];
+                ArraySegment<byte> dataOutSegment = default(ArraySegment<byte>);
                 try
                 {
                     Logging.Debug($"-----UDP relay got {length}-----");
                     IEncryptor encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
 
                     // ignore leading 3 bytes
-                    byte[] dataIn = data.AsArraySegment(3, length - 3).ToByteArray();
-                    
+                    var dataIn = data.AsArraySegment(3, length - 3);
+                    dataOutSegment = _segmentBufferManager.BorrowBuffer();
                     int outlen;
-                    encryptor.EncryptUDP(dataIn, dataIn.Length, dataOut, out outlen);
-                    int ret = await _serverSocket.SendToAsync(dataOut.AsArraySegment(0, outlen),
+                    encryptor.EncryptUDP(dataIn, dataIn.Count, dataOutSegment, out outlen);
+                    int ret = await _serverSocket.SendToAsync(dataOutSegment.Take(outlen),
                         SocketFlags.None, _serverEndPoint);
                     if (ret <= 0)
                     {
@@ -114,6 +114,9 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
+
+                    _segmentBufferManager.ReturnBuffer(dataOutSegment);
+                    dataOutSegment = default(ArraySegment<byte>);
 
                     Logging.Debug($"[udp] remote sendto {_localEndPoint} -> {_serverEndPoint} {ret}");
 
@@ -134,17 +137,18 @@ namespace Fuckshadows.Controller
 
                         Logging.Debug(
                             $"[udp] remote recvfrom {result.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
-
-                        encryptor.DecryptUDP(buf.ToByteArray(bytesReceived), bytesReceived, dataOut, out outlen);
+                        dataOutSegment = _segmentBufferManager.BorrowBuffer();
+                        encryptor.DecryptUDP(buf.Take(bytesReceived), bytesReceived, dataOutSegment, out outlen);
 
                         _segmentBufferManager.ReturnBuffer(buf);
                         buf = default(ArraySegment<byte>);
 
                         byte[] tmpbuf = new byte[outlen+3];
+                        var tmpbufSeg = tmpbuf.AsArraySegment();
                         tmpbuf[0] = tmpbuf[1] = tmpbuf[2] = 0;
-                        Array.Copy(dataOut, 0, tmpbuf, 3, outlen);
+                        ArraySegmentExtensions.BlockCopy(dataOutSegment, 0, tmpbufSeg, 3, outlen);
 
-                        var bytesSent = await _localSocket.SendToAsync(tmpbuf.AsArraySegment(),
+                        var bytesSent = await _localSocket.SendToAsync(tmpbufSeg,
                             SocketFlags.None, _localEndPoint);
                         if (bytesSent <= 0)
                         {

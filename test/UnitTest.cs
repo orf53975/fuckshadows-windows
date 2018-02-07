@@ -19,6 +19,16 @@ namespace test
     {
         #region Test helper
 
+        public static void AssertEqualsWithCount(ArraySegment<byte> src, int srcOff, ArraySegment<byte> dst, int dstOff, int count)
+        {
+            var arrMin = Math.Min(src.Count - srcOff, dst.Count - dstOff);
+            if (count > arrMin) throw new InvalidOperationException("no enough space");
+            for (var i = 0; i < count; i++)
+            {
+                Assert.AreEqual(dst.Array[dst.Offset + dstOff + i], src.Array[src.Offset + srcOff + i]);
+            }
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -50,31 +60,32 @@ namespace test
             const int IV = 16;
             byte[] cipher = new byte[plain.Length + IV];
             byte[] plain2 = new byte[plain.Length + IV];
+
+            var plainSeg = plain.AsArraySegment();
+            var cipherSeg = cipher.AsArraySegment();
+            var plain2Seg = plain2.AsArraySegment();
+
             int outLen = 0;
             int outLen2 = 0;
 
             _random.NextBytes(plain);
-            encryptor.Encrypt(plain, plain.Length, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+            encryptor.Encrypt(plainSeg, plain.Length, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(plain.Length, outLen2);
-            for (int j = 0; j < plain.Length; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
-            encryptor.Encrypt(plain, 1000, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, plain.Length);
+
+            encryptor.Encrypt(plainSeg, 1000, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(1000, outLen2);
-            for (int j = 0; j < outLen2; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
-            encryptor.Encrypt(plain, 12333, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, outLen2);
+
+            encryptor.Encrypt(plainSeg, 12333, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(12333, outLen2);
-            for (int j = 0; j < outLen2; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, outLen2);
         }
 
         private void RunAEADEncryptionRound(IEncryptor encryptor, IEncryptor decryptor)
@@ -87,30 +98,30 @@ namespace test
             int outLen = 0;
             int outLen2 = 0;
 
+            var plainSeg = plain.AsArraySegment();
+            var cipherSeg = cipher.AsArraySegment();
+            var plain2Seg = plain2.AsArraySegment();
+
             _random.NextBytes(plain);
             // make sure we have initialized the address buffer
             Buffer.BlockCopy(abufBytes, 0, plain, 0, abufLength);
-            encryptor.Encrypt(plain, plain.Length, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+            encryptor.Encrypt(plainSeg, plain.Length, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(plain.Length, outLen2);
-            for (int j = 0; j < plain.Length; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
-            encryptor.Encrypt(plain, 1000, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, plain.Length);
+
+            encryptor.Encrypt(plainSeg, 1000, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(1000, outLen2);
-            for (int j = 0; j < outLen2; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
-            encryptor.Encrypt(plain, 12333, cipher, out outLen);
-            decryptor.Decrypt(cipher, outLen, plain2, out outLen2);
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, outLen2);
+
+            encryptor.Encrypt(plainSeg, 12333, cipherSeg, out outLen);
+            decryptor.Decrypt(cipherSeg, outLen, plain2Seg, out outLen2);
             Assert.AreEqual(12333, outLen2);
-            for (int j = 0; j < outLen2; j++)
-            {
-                Assert.AreEqual(plain[j], plain2[j]);
-            }
+
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, outLen2);
         }
 
         [Test]
@@ -208,8 +219,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
-                    IEncryptor decryptor = new StreamMbedTLSEncryptor("aes-256-cfb", "barfoo!");
+                    IEncryptor encryptor = new StreamMbedTLSEncryptor(_segmentBufferManager, "aes-256-cfb", "barfoo!");
+                    IEncryptor decryptor = new StreamMbedTLSEncryptor(_segmentBufferManager, "aes-256-cfb", "barfoo!");
                     RunStreamEncryptionRound(encryptor, decryptor);
                 }
             }
@@ -243,8 +254,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor = new AEADMbedTLSEncryptor("aes-256-gcm", "barfoo!");
-                    IEncryptor decryptor = new AEADMbedTLSEncryptor("aes-256-gcm", "barfoo!");
+                    IEncryptor encryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
+                    IEncryptor decryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     encryptor.AddrBufLength = abufLength;
                     RunAEADEncryptionRound(encryptor, decryptor);
                 }
@@ -283,12 +294,12 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor1 = new StreamOpenSSLEncryptor("aes-256-cfb", "barfoo!");
-                    IEncryptor decryptor1 = new StreamOpenSSLEncryptor("aes-256-cfb", "barfoo!");
+                    IEncryptor encryptor1 = new StreamOpenSSLEncryptor(_segmentBufferManager, "aes-256-cfb", "barfoo!");
+                    IEncryptor decryptor1 = new StreamOpenSSLEncryptor(_segmentBufferManager, "aes-256-cfb", "barfoo!");
                     RunStreamEncryptionRound(encryptor1, decryptor1);
 
-                    //IEncryptor encryptor2 = new StreamOpenSSLEncryptor("rc4-md5", "barfoo!");
-                    //IEncryptor decryptor2 = new StreamOpenSSLEncryptor("rc4-md5", "barfoo!");
+                    //IEncryptor encryptor2 = new StreamOpenSSLEncryptor(_segmentBufferManager, "rc4-md5", "barfoo!");
+                    //IEncryptor decryptor2 = new StreamOpenSSLEncryptor(_segmentBufferManager, "rc4-md5", "barfoo!");
                     //RunStreamEncryptionRound(encryptor2, decryptor2);
                 }
             }
@@ -322,8 +333,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor1 = new AEADOpenSSLEncryptor("aes-256-gcm", "barfoo!");
-                    IEncryptor decryptor1 = new AEADOpenSSLEncryptor("aes-256-gcm", "barfoo!");
+                    IEncryptor encryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
+                    IEncryptor decryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     encryptor1.AddrBufLength = abufLength;
                     RunAEADEncryptionRound(encryptor1, decryptor1);
                 }
@@ -362,8 +373,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
-                    IEncryptor decryptor = new StreamMbedTLSEncryptor("rc4-md5", "barfoo!");
+                    IEncryptor encryptor = new StreamMbedTLSEncryptor(_segmentBufferManager, "rc4-md5", "barfoo!");
+                    IEncryptor decryptor = new StreamMbedTLSEncryptor(_segmentBufferManager, "rc4-md5", "barfoo!");
                     RunStreamEncryptionRound(encryptor, decryptor);
                 }
             }
@@ -397,8 +408,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
-                    IEncryptor decryptor = new StreamSodiumEncryptor("salsa20", "barfoo!");
+                    IEncryptor encryptor = new StreamSodiumEncryptor(_segmentBufferManager, "salsa20", "barfoo!");
+                    IEncryptor decryptor = new StreamSodiumEncryptor(_segmentBufferManager, "salsa20", "barfoo!");
                     RunStreamEncryptionRound(encryptor, decryptor);
                 }
             }
@@ -436,8 +447,8 @@ namespace test
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    IEncryptor encryptor = new AEADSodiumEncryptor("chacha20-poly1305", "barfoo!");
-                    IEncryptor decryptor = new AEADSodiumEncryptor("chacha20-poly1305", "barfoo!");
+                    IEncryptor encryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
+                    IEncryptor decryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
                     encryptor.AddrBufLength = abufLength;
                     RunAEADEncryptionRound(encryptor, decryptor);
                 }
@@ -472,7 +483,7 @@ namespace test
             string pass = "test-aead-derive-key";
             byte[] passBytes = Encoding.UTF8.GetBytes(pass);
             byte[] key_test = new byte[32];
-            AEADSodiumEncryptor encryptor = new AEADSodiumEncryptor("chacha20-ietf-poly1305", pass);
+            AEADSodiumEncryptor encryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-ietf-poly1305", pass);
             encryptor.DeriveKey(passBytes, key_test, 32);
             byte[] key_ref =
             {
@@ -505,7 +516,7 @@ namespace test
                 0x60, 0xc7, 0xa8, 0xe5, 0x59, 0x6b, 0x7a, 0xcd, 0x65, 0xd8, 0xe5, 0x54, 0x31, 0x57, 0x89,
                 0xf2, 0x39, 0xa7, 0xf8, 0x96, 0x37, 0x88, 0x90, 0x9e, 0xc1, 0xe1, 0xc2, 0xb7, 0xf0, 0x9f, 0x6f, 0xd9
             };
-            AEADSodiumEncryptor encryptor = new AEADSodiumEncryptor("chacha20-ietf-poly1305", pass);
+            AEADSodiumEncryptor encryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-ietf-poly1305", pass);
             encryptor.DeriveSessionKey(saltBytes, masterKeyBytes, skey_test);
             string skey1str = Convert.ToBase64String(skey_test);
             string skey2str = Convert.ToBase64String(skey_ref);
@@ -521,23 +532,25 @@ namespace test
                 0x8c, 0xfe, 0x67, 0x9a, 0x4c, 0x05, 0xfe, 0x36, 0xca, 0x00, 0x9c, 0x90, 0xe9, 0x66, 0x5b,
                 0x48, 0x35, 0x1c, 0x07, 0x55, 0x18, 0x94, 0x32, 0x72, 0xc8, 0x40, 0xd2, 0xfd, 0x1f, 0xd4, 0xf1, 0x22
             };
-            AEADEncryptor encryptor = new AEADMbedTLSEncryptor("aes-256-gcm", pass);
-            AEADEncryptor decryptor = new AEADMbedTLSEncryptor("aes-256-gcm", pass);
+            AEADEncryptor encryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", pass);
+            AEADEncryptor decryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", pass);
             byte[] plain = new byte[4096];
             byte[] cipher = new byte[8192];
             byte[] plain2 = new byte[4096];
+
+            var plainSeg = plain.AsArraySegment();
+            var cipherSeg = cipher.AsArraySegment();
+            var plain2Seg = plain2.AsArraySegment();
+
             int cipherLen;
             int plain2Len;
             _random.NextBytes(plain);
             encryptor.InitCipher(saltBytes, true, true);
-            encryptor.EncryptUDP(plain, 4096, cipher, out cipherLen);
+            encryptor.EncryptUDP(plainSeg, 4096, cipherSeg, out cipherLen);
             decryptor.InitCipher(saltBytes, false, true);
-            decryptor.DecryptUDP(cipher, cipherLen, plain2, out plain2Len);
+            decryptor.DecryptUDP(cipherSeg, cipherLen, plain2Seg, out plain2Len);
             Assert.IsTrue(plain2Len == 4096);
-            for (int i = 0; i < 4096; i++)
-            {
-                Assert.AreEqual(plain[i], plain2[i]);
-            }
+            AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, 4096);
         }
 
         [Test]

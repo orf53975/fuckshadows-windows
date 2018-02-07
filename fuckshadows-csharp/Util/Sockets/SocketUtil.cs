@@ -70,15 +70,12 @@ namespace Fuckshadows.Util.Sockets
         }
 
         public static async Task<int> FullSendTaskAsync(this Socket socket,
-            byte[] buf, int intendedSendSize, SocketFlags flags = SocketFlags.None)
+            ArraySegment<byte> buf, int intendedSendSize, SocketFlags flags = SocketFlags.None)
         {
             if (socket == null) throw new ArgumentNullException(nameof(socket));
             int bytesSent = 0;
             int bytesTransffered = 0;
-            // copy outer buf here
-            byte[] sendBytes = new byte[intendedSendSize];
-            System.Buffer.BlockCopy(buf, 0, sendBytes, 0, intendedSendSize);
-            ArraySegment<byte> tmp = sendBytes.AsArraySegment(0, buf.Length);
+            ArraySegment<byte> tmp = buf;
             while (true)
             {
                 bytesTransffered = await socket.SendAsync(tmp, flags);

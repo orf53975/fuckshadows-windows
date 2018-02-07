@@ -93,7 +93,8 @@ namespace Fuckshadows.Controller
                 {
                     var RemoteEndPoint = SocketUtil.GetEndPoint("127.0.0.1", port);
                     await _remote.ConnectAsync(RemoteEndPoint);
-                    var ret = await _remote.FullSendTaskAsync(_firstPacket, 0, _firstPacketLength);
+                    var seg = _firstPacket.AsArraySegment(0, _firstPacketLength);
+                    var ret = await _remote.FullSendTaskAsync(seg, _firstPacketLength);
                     if (ret <= 0)
                     {
                         Close();
@@ -144,7 +145,7 @@ namespace Fuckshadows.Controller
 
                         Debug.Assert(bytesRecved <= RecvSize);
 
-                        var bytesSent = await _local.FullSendTaskAsync(buf.ToByteArray(bytesRecved), bytesRecved);
+                        var bytesSent = await _local.FullSendTaskAsync(buf.Take(bytesRecved), bytesRecved);
                         Logging.Debug($"Downstream local send socket err: {bytesSent}");
                         if (bytesSent <= 0)
                         {
@@ -204,7 +205,7 @@ namespace Fuckshadows.Controller
                             return;
                         }
 
-                        var bytesSent = await _remote.FullSendTaskAsync(buf.ToByteArray(bytesRecved), bytesRecved);
+                        var bytesSent = await _remote.FullSendTaskAsync(buf.Take(bytesRecved), bytesRecved);
 
                         Logging.Debug($"Upstream server send: {bytesSent}");
                         if (bytesSent <= 0)

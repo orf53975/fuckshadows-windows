@@ -214,7 +214,8 @@ namespace Fuckshadows.Controller
                     Logging.Error("socks 5 protocol error");
                 }
 
-                var bytesSent = await _localSocket.FullSendTaskAsync(response, response.Length);
+                var responseSeg = response.AsArraySegment(0, response.Length);
+                var bytesSent = await _localSocket.FullSendTaskAsync(responseSeg, response.Length);
                 Logging.Debug($"HandshakeSendResponse: {bytesSent}");
                 if (bytesSent <= 0)
                 {
@@ -291,7 +292,8 @@ namespace Fuckshadows.Controller
         {
             try
             {
-                var bytesSent = await _localSocket.FullSendTaskAsync(TCPRelay.Sock5ConnectRequestReplySuccess,
+                var bytesSent = await _localSocket.FullSendTaskAsync(
+                    TCPRelay.Sock5ConnectRequestReplySuccess.AsArraySegment(0, TCPRelay.Sock5ConnectRequestReplySuccess.Length),
                     TCPRelay.Sock5ConnectRequestReplySuccess.Length);
                 Logging.Debug($"Sock5ConnectResponseSend: {bytesSent}");
                 if (bytesSent <= 0)
@@ -383,7 +385,8 @@ namespace Fuckshadows.Controller
             try
             {
                 buf = _segmentBufferManager.BorrowBuffer();
-                var sentSize = await _localSocket.FullSendTaskAsync(response, response.Length);
+                var responseSeg = response.AsArraySegment(0, response.Length);
+                var sentSize = await _localSocket.FullSendTaskAsync(responseSeg, response.Length);
 
                 Logging.Debug($"Udp assoc local send: {sentSize}");
                 if (sentSize <= 0)
@@ -443,42 +446,51 @@ namespace Fuckshadows.Controller
         // XXX: use SAEA to utilize TFO instead of the SocketTaskExtensions class
         private async Task StartConnect()
         {
-            ArraySegment<byte> buf = default(ArraySegment<byte>);
+            ArraySegment<byte> addrEncBuf = default(ArraySegment<byte>);
+            ArraySegment<byte> remainingEncBuf = default(ArraySegment<byte>);
             try
             {
                 CreateRemote();
 
-                buf = _segmentBufferManager.BorrowBuffer();
+                addrEncBuf = _segmentBufferManager.BorrowBuffer();
+                
 
                 _serverSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 _serverSocket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
                 var encryptedbufLen = -1;
                 Logging.DumpByteArray("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
+                var addrBufSeg = _addrBuf.AsArraySegment(0, _addrBufLength);
                 lock (_encryptionLock)
                 {
-                    _encryptor.Encrypt(_addrBuf, _addrBufLength, encBuf, out encryptedbufLen);
+                    _encryptor.Encrypt(addrBufSeg, _addrBufLength, addrEncBuf, out encryptedbufLen);
                 }
                 Logging.Debug("StartConnect(): addrBuf enc len " + encryptedbufLen);
                 if (_remainingBytesLen > 0)
                 {
                     Logging.Debug($"StartConnect(): remainingBytesLen: {_remainingBytesLen}");
+                    var remainingBuf = _remainingBytes.AsArraySegment(0, _remainingBytesLen);
+                    remainingEncBuf = _segmentBufferManager.BorrowBuffer();
                     var encRemainingBufLen = -1;
-                    byte[] tmp = new byte[4096];
                     Logging.DumpByteArray("StartConnect(): enc remaining", _remainingBytes, _remainingBytesLen);
                     lock (_encryptionLock)
                     {
-                        _encryptor.Encrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
+                        _encryptor.Encrypt(remainingBuf, _remainingBytesLen, remainingEncBuf, out encRemainingBufLen);
                     }
                     Logging.Debug("StartConnect(): remaining enc len " + encRemainingBufLen);
-                    Buffer.BlockCopy(tmp, 0, encBuf, encryptedbufLen, encRemainingBufLen);
+                    ArraySegmentExtensions.BlockCopy(remainingEncBuf, 0, addrEncBuf, encryptedbufLen, encRemainingBufLen);
                     encryptedbufLen += encRemainingBufLen;
+
+                    _segmentBufferManager.ReturnBuffer(remainingEncBuf);
+                    remainingEncBuf = default(ArraySegment<byte>);
+
                 }
                 Logging.Debug("actual enc buf len " + encryptedbufLen);
 
+                // TODO: use SAEA for TFO
                 await _serverSocket.ConnectAsync(SocketUtil.GetEndPoint(_server.server, _server.server_port));
 
-                var bytesSent = await _serverSocket.FullSendTaskAsync(encBuf, encryptedbufLen);
+                var bytesSent = await _serverSocket.FullSendTaskAsync(addrEncBuf, encryptedbufLen);
                 if (bytesSent <= 0)
                 {
                     Logging.Error($"StartConnect: {bytesSent}");
@@ -491,6 +503,9 @@ namespace Fuckshadows.Controller
                 {
                     Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
                 }
+
+                _segmentBufferManager.ReturnBuffer(addrEncBuf);
+                addrEncBuf = default(ArraySegment<byte>);
 
                 Task.Factory.StartNew(StartPipe, TaskCreationOptions.PreferFairness).Forget();
             }
@@ -509,10 +524,16 @@ namespace Fuckshadows.Controller
             }
             finally
             {
-                if (buf != default(ArraySegment<byte>))
+                if (addrEncBuf != default(ArraySegment<byte>))
                 {
-                    _segmentBufferManager.ReturnBuffer(buf);
-                    buf = default(ArraySegment<byte>);
+                    _segmentBufferManager.ReturnBuffer(addrEncBuf);
+                    addrEncBuf = default(ArraySegment<byte>);
+                }
+
+                if (remainingEncBuf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(remainingEncBuf);
+                    remainingEncBuf = default(ArraySegment<byte>);
                 }
             }
         }
@@ -552,15 +573,14 @@ namespace Fuckshadows.Controller
                     Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
                     _tcprelay.UpdateInboundCounter(_server, bytesRecved);
                     lastActivity = DateTime.Now;
-                    var serverRecvBufBytes = serverRecvBuf.ToByteArray(bytesRecved);
                     localSendBuf = _segmentBufferManager.BorrowBuffer();
 
                     int decBufLen = -1;
                     lock (_decryptionLock)
                     {
-                        _encryptor.Decrypt(serverRecvBufBytes,
+                        _encryptor.Decrypt(serverRecvBuf,
                             bytesRecved,
-                            localSendBuf.Array,
+                            localSendBuf,
                             out decBufLen);
                     }
 
@@ -570,7 +590,7 @@ namespace Fuckshadows.Controller
                     // AEAD: if we need more to decrypt, keep receiving from remote
                     if (decBufLen <= 0) continue;
 
-                    var bytesSent = await _localSocket.FullSendTaskAsync(localSendBuf.Array, 0, decBufLen);
+                    var bytesSent = await _localSocket.FullSendTaskAsync(localSendBuf, decBufLen);
 
                     Logging.Debug($"Downstream local send socket err: {bytesSent}");
                     if (bytesSent <= 0)
@@ -644,9 +664,9 @@ namespace Fuckshadows.Controller
                     int encBufLen = -1;
                     lock (_encryptionLock)
                     {
-                        _encryptor.Encrypt(localRecvBuf.Array,
+                        _encryptor.Encrypt(localRecvBuf,
                             bytesRecved,
-                            serverSendBuf.Array,
+                            serverSendBuf,
                             out encBufLen);
                     }
 
@@ -655,7 +675,7 @@ namespace Fuckshadows.Controller
 
                     _tcprelay.UpdateOutboundCounter(_server, encBufLen);
 
-                    var bytesSent = await _serverSocket.FullSendTaskAsync(serverSendBuf.Array, 0, encBufLen);
+                    var bytesSent = await _serverSocket.FullSendTaskAsync(serverSendBuf, encBufLen);
 
                     Logging.Debug($"Upstream server send: {bytesSent}");
                     if (bytesSent <= 0)
