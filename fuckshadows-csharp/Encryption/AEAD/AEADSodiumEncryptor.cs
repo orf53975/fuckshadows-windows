@@ -73,9 +73,9 @@ namespace Fuckshadows.Encryption.AEAD
             // outbuf: ciphertext + tag
             int ret;
             ulong encClen = 0;
-            Logging.Dump("_encNonce before enc", _encNonce, nonceLen);
-            Logging.Dump("_sodiumEncSubkey", _sodiumEncSubkey, keyLen);
-            Logging.Dump("before cipherEncrypt: plain", plaintext, (int) plen);
+            Logging.DumpByteArray("_encNonce before enc", _encNonce, nonceLen);
+            Logging.DumpByteArray("_sodiumEncSubkey", _sodiumEncSubkey, keyLen);
+            Logging.DumpByteArray("before cipherEncrypt: plain", plaintext, (int) plen);
             switch (_cipher)
             {
                 case CIPHER_CHACHA20POLY1305:
@@ -110,7 +110,7 @@ namespace Fuckshadows.Encryption.AEAD
                     throw new System.Exception("not implemented");
             }
             if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
-            Logging.Dump("after cipherEncrypt: cipher", ciphertext, (int) encClen);
+            Logging.DumpByteArray("after cipherEncrypt: cipher", ciphertext, (int) encClen);
             clen = (uint) encClen;
         }
 
@@ -121,9 +121,9 @@ namespace Fuckshadows.Encryption.AEAD
             // outbuf: plaintext
             int ret;
             ulong decPlen = 0;
-            Logging.Dump("_decNonce before dec", _decNonce, nonceLen);
-            Logging.Dump("_sodiumDecSubkey", _sodiumDecSubkey, keyLen);
-            Logging.Dump("before cipherDecrypt: cipher", ciphertext, (int) clen);
+            Logging.DumpByteArray("_decNonce before dec", _decNonce, nonceLen);
+            Logging.DumpByteArray("_sodiumDecSubkey", _sodiumDecSubkey, keyLen);
+            Logging.DumpByteArray("before cipherDecrypt: cipher", ciphertext, (int) clen);
             switch (_cipher)
             {
                 case CIPHER_CHACHA20POLY1305:
@@ -159,7 +159,7 @@ namespace Fuckshadows.Encryption.AEAD
             }
 
             if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
-            Logging.Dump("after cipherDecrypt: plain", plaintext, (int) decPlen);
+            Logging.DumpByteArray("after cipherDecrypt: plain", plaintext, (int) decPlen);
             plen = (uint) decPlen;
         }
 

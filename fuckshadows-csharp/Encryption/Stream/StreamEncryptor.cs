@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text;
 using Fuckshadows.Encryption.CircularBuffer;
 using Fuckshadows.Controller;
+using Fuckshadows.Util.Sockets.Buffer;
 using static Fuckshadows.Util.Utils;
 
 namespace Fuckshadows.Encryption.Stream
@@ -16,8 +17,6 @@ namespace Fuckshadows.Encryption.Stream
 
         // every connection should create its own buffer
 
-        private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize * 2);
-        private ByteCircularBuffer _decCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize * 2);
         protected Dictionary<string, EncryptorInfo> ciphers;
 
         protected byte[] _encryptIV;
@@ -37,8 +36,8 @@ namespace Fuckshadows.Encryption.Stream
         protected int keyLen;
         protected int ivLen;
 
-        public StreamEncryptor(string method, string password)
-            : base(method, password)
+        public StreamEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
             InitEncryptorInfo(method);
             InitKey(password);
@@ -109,6 +108,7 @@ namespace Fuckshadows.Encryption.Stream
             int cipherOffset = 0;
             Debug.Assert(_encCircularBuffer != null, "_encCircularBuffer != null");
             _encCircularBuffer.Put(buf, 0, length);
+            var tmp = BufferManager.BorrowBuffer();
             if (! _encryptIVSent) {
                 // Generate IV
                 byte[] ivBytes = new byte[ivLen];

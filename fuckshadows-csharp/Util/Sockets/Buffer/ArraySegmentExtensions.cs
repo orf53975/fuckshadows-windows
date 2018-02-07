@@ -1,4 +1,5 @@
 ﻿using System;
+using static Fuckshadows.Util.Utils;
 
 namespace Fuckshadows.Util.Sockets.Buffer
 {
@@ -75,42 +76,6 @@ namespace Fuckshadows.Util.Sockets.Buffer
         public static ArraySegment<T> SkipLast<T>(this ArraySegment<T> segment, int count) => segment.Take(segment.Count - count);
 
         /// <summary>
-        /// Copies the elements in this array segment into a destination array segment. The copy operation will not overflow the bounds of the segments; it will copy <c>min(segment.Count, destination.Count)</c> elements.
-        /// </summary>
-        /// <typeparam name="T">The type of elements contained in the array.</typeparam>
-        /// <param name="segment">The source array segment.</param>
-        /// <param name="destination">The detsintation array segment.</param>
-        public static void CopyTo<T>(this ArraySegment<T> segment, ArraySegment<T> destination)
-        {
-            Array.Copy(segment.Array, segment.Offset, destination.Array, destination.Offset, segment.Count < destination.Count ? segment.Count : destination.Count);
-        }
-
-        /// <summary>
-        /// Copies the elements in this array segment into a destination array.
-        /// </summary>
-        /// <typeparam name="T">The type of elements contained in the array.</typeparam>
-        /// <param name="segment">The array segment.</param>
-        /// <param name="array">The destination array. May not be <c>null</c>.</param>
-        /// <param name="arrayIndex">The index in the destination array at which to begin copying. Defaults to <c>0</c>. Must be greater than or equal to <c>0</c>.</param>
-        public static void CopyTo<T>(this ArraySegment<T> segment, T[] array, int arrayIndex = 0)
-        {
-            Array.Copy(segment.Array, segment.Offset, array, arrayIndex, segment.Count);
-        }
-
-        /// <summary>
-        /// Creates a new array containing the elements in this array segment.
-        /// </summary>
-        /// <typeparam name="T">The type of elements contained in the array.</typeparam>
-        /// <param name="segment">The array segment.</param>
-        /// <returns>The new array.</returns>
-        public static T[] ToArray<T>(this ArraySegment<T> segment)
-        {
-            var ret = new T[segment.Count];
-            segment.CopyTo(ret);
-            return ret;
-        }
-
-        /// <summary>
         /// Creates a new array containing the elements in this byte array segment.
         /// </summary>
         /// <param name="segment">The byte array segment.</param>
@@ -124,24 +89,37 @@ namespace Fuckshadows.Util.Sockets.Buffer
         {
             var realCount = count <= segment.Count ? count : segment.Count;
             var ret = new byte[realCount];
-            System.Buffer.BlockCopy(segment.Array, segment.Offset, ret, 0, realCount);
+            PerfByteCopy(segment.Array, segment.Offset, ret, 0, realCount);
             return ret;
         }
 
-        public static bool EqualsWithCount(ArraySegment<byte> src, ArraySegment<byte> dst, int count)
+        public static bool EqualsWithCount(ArraySegment<byte> src, int srcOff, ArraySegment<byte> dst, int dstOff, int count)
         {
-            var srcOff = src.Offset;
-            var dstOff = dst.Offset;
-            var srcArr = src.Array;
-            var dstArr = dst.Array;
-            var realCount = Math.Min(src.Count, dst.Count);
-            for (var i = 0; i < realCount; i++)
+            var arrMin = Math.Min(src.Count - srcOff, dst.Count - dstOff);
+            if (count > arrMin) throw new InvalidOperationException("no enough space");
+            for (var i = 0; i < count; i++)
             {
-                if (dstArr[dstOff + i] != srcArr[srcOff + i])
+                if (dst.Array[dst.Offset + dstOff + i] != src.Array[src.Offset + srcOff + i])
                     return false;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Copy bytes between two <see cref="ArraySegment{T}"/>
+        /// </summary>
+        /// <param name="src"></param>
+        /// <param name="srcOff">Offset based on <see cref="ArraySegment{T}"/>'s view, not the offset based on underlying array</param>
+        /// <param name="dst"></param>
+        /// <param name="dstOff">Offset based on <see cref="ArraySegment{T}"/>'s view, not the offset based on underlying array</param>
+        /// <param name="count">bytes to copy</param>
+        public static void BlockCopy(ArraySegment<byte> src, int srcOff, ArraySegment<byte> dst, int dstOff, int count)
+        {
+            var arrMin = Math.Min(src.Count - srcOff, dst.Count - dstOff);
+            if (count > arrMin) throw new InvalidOperationException("no enough space");
+            PerfByteCopy(src.Array, src.Offset + srcOff, dst.Array, dst.Offset + dstOff,
+                count);
         }
     }
 }

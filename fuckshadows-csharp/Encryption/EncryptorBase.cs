@@ -1,4 +1,5 @@
 ﻿using System;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Encryption
 {
@@ -75,14 +76,16 @@ namespace Fuckshadows.Encryption
 
         public const int MD5_LEN = 16;
 
-        protected EncryptorBase(string method, string password)
+        protected EncryptorBase(ISegmentBufferManager bm, string method, string password)
         {
             Method = method;
             Password = password;
+            BufferManager = bm;
         }
 
         protected string Method;
         protected string Password;
+        protected ISegmentBufferManager BufferManager;
 
         public abstract void Encrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 

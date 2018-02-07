@@ -7,19 +7,19 @@ namespace Fuckshadows.Encryption
     {
         /* length == -1 means not used */
         int AddrBufLength { set; get; }
-        void Encrypt(ISegmentBufferManager bufferManager,
+        void Encrypt(
             ArraySegment<byte> buf, int length,
             ArraySegment<byte> outbuf, out int outlength);
 
-        void Decrypt(ISegmentBufferManager bufferManager,
+        void Decrypt(
             ArraySegment<byte> buf, int length,
             ArraySegment<byte> outbuf, out int outlength);
 
-        void EncryptUDP(ISegmentBufferManager bufferManager,
+        void EncryptUDP(
             ArraySegment<byte> buf, int length,
             ArraySegment<byte> outbuf, out int outlength);
 
-        void DecryptUDP(ISegmentBufferManager bufferManager,
+        void DecryptUDP(
             ArraySegment<byte> buf, int length,
             ArraySegment<byte> outbuf, out int outlength);
     }

@@ -6,6 +6,7 @@ using System.Text;
 using Fuckshadows.Encryption.CircularBuffer;
 using Fuckshadows.Controller;
 using Fuckshadows.Encryption.Exception;
+using Fuckshadows.Util.Sockets.Buffer;
 using static Fuckshadows.Util.Utils;
 
 namespace Fuckshadows.Encryption.AEAD
@@ -70,8 +71,8 @@ namespace Fuckshadows.Encryption.AEAD
         // zero-length garbage
         protected static readonly byte[] ZeroGarbageBytes = {0 /* length indicator */};
 
-        public AEADEncryptor(string method, string password)
-            : base(method, password)
+        public AEADEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
             InitEncryptorInfo(method);
             InitKey(password);
@@ -137,7 +138,7 @@ namespace Fuckshadows.Encryption.AEAD
                 _decryptSalt = new byte[saltLen];
                 Array.Copy(salt, _decryptSalt, saltLen);
             }
-            Logging.Dump("Salt", salt, saltLen);
+            Logging.DumpByteArray("Salt", salt, saltLen);
         }
 
         public static void randBytes(byte[] buf, int length) { RNG.GetBytes(buf, length); }

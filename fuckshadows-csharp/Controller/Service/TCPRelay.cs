@@ -319,8 +319,8 @@ namespace Fuckshadows.Controller
             // +-----+-----+-------+------+----------+----------+
             Logging.Debug("enter ParseAddrBuf");
             _addrBuf = buf.Skip(3).Take(bufLen - 3).ToArray();
-            Logging.Dump("Sock5RequestRecv recvBuf", buf, bufLen);
-            Logging.Dump(nameof(_addrBuf), _addrBuf, _addrBuf.Length);
+            Logging.DumpByteArray("Sock5RequestRecv recvBuf", buf, bufLen);
+            Logging.DumpByteArray(nameof(_addrBuf), _addrBuf, _addrBuf.Length);
             int atyp = _addrBuf[0];
             string dstAddr = "Unknown";
             int dstPort = -1;
@@ -440,6 +440,7 @@ namespace Fuckshadows.Controller
             _encryptor.AddrBufLength = _addrBufLength;
         }
 
+        // XXX: use SAEA to utilize TFO instead of the SocketTaskExtensions class
         private async Task StartConnect()
         {
             ArraySegment<byte> buf = default(ArraySegment<byte>);
@@ -453,8 +454,7 @@ namespace Fuckshadows.Controller
                 _serverSocket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
                 var encryptedbufLen = -1;
-                var encBuf = new byte[TCPRelay.BufferSize];
-                Logging.Dump("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
+                Logging.DumpByteArray("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
                 lock (_encryptionLock)
                 {
                     _encryptor.Encrypt(_addrBuf, _addrBufLength, encBuf, out encryptedbufLen);
@@ -465,7 +465,7 @@ namespace Fuckshadows.Controller
                     Logging.Debug($"StartConnect(): remainingBytesLen: {_remainingBytesLen}");
                     var encRemainingBufLen = -1;
                     byte[] tmp = new byte[4096];
-                    Logging.Dump("StartConnect(): enc remaining", _remainingBytes, _remainingBytesLen);
+                    Logging.DumpByteArray("StartConnect(): enc remaining", _remainingBytes, _remainingBytesLen);
                     lock (_encryptionLock)
                     {
                         _encryptor.Encrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);

@@ -6,6 +6,7 @@ using System.Net;
 using System.Diagnostics;
 using System.Text;
 using Fuckshadows.Util;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Controller
 {
@@ -71,7 +72,7 @@ namespace Fuckshadows.Controller
         }
 
         [Conditional("DEBUG")]
-        public static void Dump(string tag, byte[] arr, int length)
+        public static void DumpByteArray(string tag, byte[] arr, int length)
         {
             var sb = new StringBuilder($"{Environment.NewLine}{tag}: ");
             for (int i = 0; i < length - 1; i++) {
@@ -80,6 +81,12 @@ namespace Fuckshadows.Controller
             sb.Append($"0x{arr[length - 1]:X2}");
             sb.Append(Environment.NewLine);
             Debug(sb.ToString());
+        }
+
+        [Conditional("DEBUG")]
+        public static void DumpByteArraySegment(string tag, ArraySegment<byte> segment, int length)
+        {
+            DumpByteArray(tag, segment.ToByteArray(length), length);
         }
 
         public static void LogUsefulException(Exception e)
