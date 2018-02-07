@@ -144,7 +144,7 @@ namespace Fuckshadows.Controller
 
                         Debug.Assert(bytesRecved <= RecvSize);
 
-                        var bytesSent = await _local.FullSendTaskAsync(buf.Array, 0, bytesRecved);
+                        var bytesSent = await _local.FullSendTaskAsync(buf.ToByteArray(bytesRecved), bytesRecved);
                         Logging.Debug($"Downstream local send socket err: {bytesSent}");
                         if (bytesSent <= 0)
                         {
@@ -204,7 +204,7 @@ namespace Fuckshadows.Controller
                             return;
                         }
 
-                        var bytesSent = await _remote.FullSendTaskAsync(buf.Array, 0, bytesRecved);
+                        var bytesSent = await _remote.FullSendTaskAsync(buf.ToByteArray(bytesRecved), bytesRecved);
 
                         Logging.Debug($"Upstream server send: {bytesSent}");
                         if (bytesSent <= 0)

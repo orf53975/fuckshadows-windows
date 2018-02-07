@@ -55,7 +55,7 @@ namespace Fuckshadows.Controller
             _config = conf;
             Handlers = new HashSet<TCPHandler>();
             _lastSweepTime = DateTime.Now;
-            _segmentBufferManager = new SegmentBufferManager(2048, TCPRelay.BufferSize, 2);
+            _segmentBufferManager = new SegmentBufferManager(2048, BufferSize);
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -214,7 +214,7 @@ namespace Fuckshadows.Controller
                     Logging.Error("socks 5 protocol error");
                 }
 
-                var bytesSent = await _localSocket.FullSendTaskAsync(response, 0, response.Length);
+                var bytesSent = await _localSocket.FullSendTaskAsync(response, response.Length);
                 Logging.Debug($"HandshakeSendResponse: {bytesSent}");
                 if (bytesSent <= 0)
                 {
@@ -292,7 +292,7 @@ namespace Fuckshadows.Controller
             try
             {
                 var bytesSent = await _localSocket.FullSendTaskAsync(TCPRelay.Sock5ConnectRequestReplySuccess,
-                    0, TCPRelay.Sock5ConnectRequestReplySuccess.Length);
+                    TCPRelay.Sock5ConnectRequestReplySuccess.Length);
                 Logging.Debug($"Sock5ConnectResponseSend: {bytesSent}");
                 if (bytesSent <= 0)
                 {
@@ -383,7 +383,7 @@ namespace Fuckshadows.Controller
             try
             {
                 buf = _segmentBufferManager.BorrowBuffer();
-                var sentSize = await _localSocket.FullSendTaskAsync(response, 0, response.Length);
+                var sentSize = await _localSocket.FullSendTaskAsync(response, response.Length);
 
                 Logging.Debug($"Udp assoc local send: {sentSize}");
                 if (sentSize <= 0)
@@ -453,10 +453,11 @@ namespace Fuckshadows.Controller
                 _serverSocket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
                 var encryptedbufLen = -1;
+                var encBuf = new byte[TCPRelay.BufferSize];
                 Logging.Dump("StartConnect(): enc addrBuf", _addrBuf, _addrBufLength);
                 lock (_encryptionLock)
                 {
-                    _encryptor.Encrypt(_addrBuf, _addrBufLength, buf.Array, out encryptedbufLen);
+                    _encryptor.Encrypt(_addrBuf, _addrBufLength, encBuf, out encryptedbufLen);
                 }
                 Logging.Debug("StartConnect(): addrBuf enc len " + encryptedbufLen);
                 if (_remainingBytesLen > 0)
@@ -470,14 +471,14 @@ namespace Fuckshadows.Controller
                         _encryptor.Encrypt(_remainingBytes, _remainingBytesLen, tmp, out encRemainingBufLen);
                     }
                     Logging.Debug("StartConnect(): remaining enc len " + encRemainingBufLen);
-                    Buffer.BlockCopy(tmp, 0, buf.Array, buf.Offset + encryptedbufLen, encRemainingBufLen);
+                    Buffer.BlockCopy(tmp, 0, encBuf, encryptedbufLen, encRemainingBufLen);
                     encryptedbufLen += encRemainingBufLen;
                 }
                 Logging.Debug("actual enc buf len " + encryptedbufLen);
 
                 await _serverSocket.ConnectAsync(SocketUtil.GetEndPoint(_server.server, _server.server_port));
 
-                var bytesSent = await _serverSocket.FullSendTaskAsync(buf.Array, buf.Offset, encryptedbufLen);
+                var bytesSent = await _serverSocket.FullSendTaskAsync(encBuf, encryptedbufLen);
                 if (bytesSent <= 0)
                 {
                     Logging.Error($"StartConnect: {bytesSent}");
@@ -551,13 +552,13 @@ namespace Fuckshadows.Controller
                     Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
                     _tcprelay.UpdateInboundCounter(_server, bytesRecved);
                     lastActivity = DateTime.Now;
-
+                    var serverRecvBufBytes = serverRecvBuf.ToByteArray(bytesRecved);
                     localSendBuf = _segmentBufferManager.BorrowBuffer();
 
                     int decBufLen = -1;
                     lock (_decryptionLock)
                     {
-                        _encryptor.Decrypt(serverRecvBuf.Array,
+                        _encryptor.Decrypt(serverRecvBufBytes,
                             bytesRecved,
                             localSendBuf.Array,
                             out decBufLen);

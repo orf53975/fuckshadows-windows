@@ -148,7 +148,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         #region TCP
 
-        public override void Encrypt(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void Encrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             Debug.Assert(_encCircularBuffer != null, "_encCircularBuffer != null");
 
@@ -217,7 +217,7 @@ namespace Fuckshadows.Encryption.AEAD
         }
 
 
-        public override void Decrypt(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void Decrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             Debug.Assert(_decCircularBuffer != null, "_decCircularBuffer != null");
             int bufSize;
@@ -308,7 +308,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         #region UDP
 
-        public override void EncryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void EncryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             // Generate salt
             randBytes(outbuf, saltLen);
@@ -322,7 +322,7 @@ namespace Fuckshadows.Encryption.AEAD
             }
         }
 
-        public override void DecryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void DecryptUDP(ArraySegment<byte> arraySegment, int length, ArraySegment<byte> segment, out int outlength)
         {
             InitCipher(buf, false, true);
             uint olen = 0;

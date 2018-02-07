@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Text;
 using Fuckshadows.Controller.Hotkeys;
 using Fuckshadows.Encryption.AEAD;
+using Fuckshadows.Util.Sockets.Buffer;
 using NUnit.Framework;
 
 namespace test
@@ -31,6 +32,11 @@ namespace test
             _random = new Random();
         }
 
+        private const int _maxPlainTextSize = 16384;
+        private const int _maxSaltSize = 32;
+        private const int _maxIVSize = 16;
+        private const int _maxBufSize = _maxPlainTextSize * 2 + _maxIVSize + _maxSaltSize;
+        private ISegmentBufferManager _segmentBufferManager = new SegmentBufferManager(2048, _maxBufSize);
         private Random _random = null;
         private static bool encryptionFailed = false;
         private static byte[] abufBytes = { 3, 14, 119, 119, 119, 46, 103, 111, 111, 103, 108, 101, 46, 99, 111, 109, 1, 187 };

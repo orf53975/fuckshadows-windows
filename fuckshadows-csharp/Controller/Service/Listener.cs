@@ -35,7 +35,7 @@ namespace Fuckshadows.Controller
         public Listener(List<IService> services)
         {
             this._services = services;
-            _segmentBufferManager = new SegmentBufferManager(1024, MaxFirstPacketLen);
+            _segmentBufferManager = new SegmentBufferManager(1024, MaxFirstPacketLen, 2);
         }
 
         private bool CheckIfPortInUse(int port)
@@ -122,11 +122,10 @@ namespace Fuckshadows.Controller
                         ServiceUserToken token = new ServiceUserToken
                         {
                             socket = _udpSocket,
-                            firstPacket = new byte[bytesRecved],
+                            firstPacket = buf.ToByteArray(bytesRecved),
                             firstPacketLength = bytesRecved,
                             remoteEndPoint = result.RemoteEndPoint
                         };
-                        Buffer.BlockCopy(buf.Array, buf.Offset, token.firstPacket, 0, bytesRecved);
 
                         Task.Factory.StartNew(() => HandleUDPServices(token)).Forget();
                     }
@@ -198,10 +197,9 @@ namespace Fuckshadows.Controller
                     serviceToken = new ServiceUserToken
                     {
                         socket = clientSocket,
-                        firstPacket = new byte[bytesReceived],
+                        firstPacket = token.PayloadBytes,
                         firstPacketLength = bytesReceived
                     };
-                    Buffer.BlockCopy(token.PayloadBytes, 0, serviceToken.firstPacket, 0, bytesReceived);
                 }
                 else
                 {

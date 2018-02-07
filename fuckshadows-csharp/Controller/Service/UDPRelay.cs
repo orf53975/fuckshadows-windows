@@ -24,9 +24,12 @@ namespace Fuckshadows.Controller
 
         private const int UDP_HANDLER_NUM = 512;
 
+        private ISegmentBufferManager _segmentBufferManager;
+
         public UDPRelay(FuckshadowsController controller)
         {
             this._controller = controller;
+            _segmentBufferManager = new SegmentBufferManager(2048, 1500);
         }
 
         public override bool Handle(ServiceUserToken obj)
@@ -49,7 +52,7 @@ namespace Fuckshadows.Controller
             {
                 handler = new UDPHandler(socket,
                     _controller.GetAServer(remoteEndPoint, null /*TODO: fix this*/),
-                    remoteEndPoint);
+                    remoteEndPoint, _segmentBufferManager);
                 _cache.add(remoteEndPoint, handler);
             }
             Task.Factory.StartNew(async () => { await handler.Start(firstPacket, length); }).Forget();
@@ -69,6 +72,8 @@ namespace Fuckshadows.Controller
             private EndPoint _localEndPoint;
             private EndPoint _serverEndPoint;
 
+            private ISegmentBufferManager _segmentBufferManager;
+
             private int _state = _none;
             private const int _none = 0;
             private const int _running = 1;
@@ -76,11 +81,12 @@ namespace Fuckshadows.Controller
 
             public bool IsRunning => _state == _running;
 
-            public UDPHandler(Socket local, Server server, EndPoint localEndPoint)
+            public UDPHandler(Socket local, Server server, EndPoint localEndPoint, ISegmentBufferManager bm)
             {
                 _localSocket = local;
                 _server = server;
                 _localEndPoint = localEndPoint;
+                _segmentBufferManager = bm;
                 _serverEndPoint = SocketUtil.GetEndPoint(server.server, server.server_port);
                 _serverSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
             }
@@ -88,33 +94,35 @@ namespace Fuckshadows.Controller
             public async Task Start(byte[] data, int length)
             {
                 Interlocked.Exchange(ref _state, _running);
-                ArraySegment<byte> tmpArrSegment = default(ArraySegment<byte>);
+                ArraySegment<byte> buf = default(ArraySegment<byte>);
+                byte[] dataOut = new byte[1500];
                 try
                 {
                     Logging.Debug($"-----UDP relay got {length}-----");
                     IEncryptor encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
-                    byte[] dataIn = new byte[length - 3];
-                    Array.Copy(data, 3, dataIn, 0, length - 3);
 
+                    // ignore leading 3 bytes
+                    byte[] dataIn = data.AsArraySegment(3, length - 3).ToByteArray();
+                    
                     int outlen;
-                    byte[] maxUDPBytes = new byte[1500];
-                    encryptor.EncryptUDP(dataIn, dataIn.Length, maxUDPBytes, out outlen);
-                    tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, outlen);
-                    int ret = await _serverSocket.SendToAsync(tmpArrSegment, SocketFlags.None, _serverEndPoint);
+                    encryptor.EncryptUDP(dataIn, dataIn.Length, dataOut, out outlen);
+                    int ret = await _serverSocket.SendToAsync(dataOut.AsArraySegment(0, outlen),
+                        SocketFlags.None, _serverEndPoint);
                     if (ret <= 0)
                     {
                         Logging.Error($"[udp] remote sendto {ret}");
                         Close();
                         return;
                     }
+
                     Logging.Debug($"[udp] remote sendto {_localEndPoint} -> {_serverEndPoint} {ret}");
 
 
                     while (IsRunning)
                     {
 
-                        tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, 1500);
-                        var result = await _serverSocket.ReceiveFromAsync(tmpArrSegment, SocketFlags.None,
+                        buf = _segmentBufferManager.BorrowBuffer();
+                        var result = await _serverSocket.ReceiveFromAsync(buf, SocketFlags.None,
                             new IPEndPoint(IPAddress.Any, 0));
                         var bytesReceived = result.ReceivedBytes;
                         if (bytesReceived <= 0)
@@ -123,31 +131,44 @@ namespace Fuckshadows.Controller
                             Close();
                             return;
                         }
-                        Logging.Debug($"[udp] remote recvfrom {result.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
-                        byte[] dataOut = new byte[bytesReceived];
-                        encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
-                        encryptor.DecryptUDP(maxUDPBytes, bytesReceived, dataOut, out outlen);
 
+                        Logging.Debug(
+                            $"[udp] remote recvfrom {result.RemoteEndPoint} -> {_localSocket.LocalEndPoint} {bytesReceived}");
 
-                        byte[] buf = maxUDPBytes;
-                        buf[0] = buf[1] = buf[2] = 0;
-                        Array.Copy(dataOut, 0, buf, 3, outlen);
+                        encryptor.DecryptUDP(buf.ToByteArray(bytesReceived), bytesReceived, dataOut, out outlen);
 
-                        tmpArrSegment = new ArraySegment<byte>(maxUDPBytes, 0, outlen + 3);
-                        var bytesSent = await _localSocket.SendToAsync(tmpArrSegment, SocketFlags.None, _localEndPoint);
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
+
+                        byte[] tmpbuf = new byte[outlen+3];
+                        tmpbuf[0] = tmpbuf[1] = tmpbuf[2] = 0;
+                        Array.Copy(dataOut, 0, tmpbuf, 3, outlen);
+
+                        var bytesSent = await _localSocket.SendToAsync(tmpbuf.AsArraySegment(),
+                            SocketFlags.None, _localEndPoint);
                         if (bytesSent <= 0)
                         {
                             Logging.Error($"[udp] local sendto {ret}");
                             Close();
                             return;
                         }
-                        Logging.Debug($"[udp] local sendto {_localSocket.LocalEndPoint} -> {_localEndPoint} {bytesSent}");
+
+                        Logging.Debug(
+                            $"[udp] local sendto {_localSocket.LocalEndPoint} -> {_localEndPoint} {bytesSent}");
                     }
                 }
                 catch (Exception e)
                 {
                     Logging.LogUsefulException(e);
                     Close();
+                }
+                finally
+                {
+                    if (buf != default(ArraySegment<byte>))
+                    {
+                        _segmentBufferManager.ReturnBuffer(buf);
+                        buf = default(ArraySegment<byte>);
+                    }
                 }
             }
 

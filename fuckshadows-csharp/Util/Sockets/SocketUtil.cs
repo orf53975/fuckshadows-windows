@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Util.Sockets
 {
@@ -54,7 +55,7 @@ namespace Fuckshadows.Util.Sockets
             int bytesReceived = 0;
             int bytesTransffered = 0;
             byte[] outBytes = new byte[intendedRecvSize];
-            ArraySegment<byte> tmp = new ArraySegment<byte>(outBytes, 0, intendedRecvSize);
+            ArraySegment<byte> tmp = outBytes.AsArraySegment(0, intendedRecvSize);
 
             while (true)
             {
@@ -62,28 +63,29 @@ namespace Fuckshadows.Util.Sockets
                 if (bytesTransffered <= 0) break;
                 Interlocked.Add(ref bytesReceived, bytesTransffered);
                 if (socket.Available <= 0) break;
-                tmp = new ArraySegment<byte>(outBytes,
-                    tmp.Offset + bytesTransffered, intendedRecvSize - bytesTransffered);
+                tmp = tmp.Skip(bytesTransffered);
             }
 
             return new TcpTrafficToken(bytesReceived, outBytes);
         }
 
         public static async Task<int> FullSendTaskAsync(this Socket socket,
-            byte[] buf, int offset, int intendedSendSize, SocketFlags flags = SocketFlags.None)
+            byte[] buf, int intendedSendSize, SocketFlags flags = SocketFlags.None)
         {
             if (socket == null) throw new ArgumentNullException(nameof(socket));
             int bytesSent = 0;
             int bytesTransffered = 0;
-            ArraySegment<byte> tmp = new ArraySegment<byte>(buf, offset, intendedSendSize);
+            // copy outer buf here
+            byte[] sendBytes = new byte[intendedSendSize];
+            System.Buffer.BlockCopy(buf, 0, sendBytes, 0, intendedSendSize);
+            ArraySegment<byte> tmp = sendBytes.AsArraySegment(0, buf.Length);
             while (true)
             {
                 bytesTransffered = await socket.SendAsync(tmp, flags);
                 if (bytesTransffered <= 0) break;
                 Interlocked.Add(ref bytesSent, bytesTransffered);
                 if (bytesSent >= intendedSendSize) break;
-                tmp = new ArraySegment<byte>(buf,
-                    tmp.Offset + bytesTransffered, intendedSendSize - bytesTransffered);
+                tmp = tmp.Skip(bytesTransffered);
             }
 
             return bytesSent;

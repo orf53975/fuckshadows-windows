@@ -175,6 +175,7 @@
     <Compile Include="Util\ProcessManagement\Job.cs" />
     <Compile Include="Util\ProcessManagement\ThreadUtil.cs" />
     <Compile Include="Encryption\RNG.cs" />
+    <Compile Include="Util\Sockets\Buffer\ArraySegmentExtensions.cs" />
     <Compile Include="Util\Sockets\Buffer\ISegmentBufferManager.cs" />
     <Compile Include="Util\Sockets\Buffer\SegmentBufferDeflector.cs" />
     <Compile Include="Util\Sockets\Buffer\SegmentBufferManager.cs" />

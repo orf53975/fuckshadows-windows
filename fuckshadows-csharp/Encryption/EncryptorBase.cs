@@ -1,4 +1,6 @@
-﻿namespace Fuckshadows.Encryption
+﻿using System;
+
+namespace Fuckshadows.Encryption
 {
     public class EncryptorInfo
     {
@@ -82,13 +84,13 @@
         protected string Method;
         protected string Password;
 
-        public abstract void Encrypt(byte[] buf, int length, byte[] outbuf, out int outlength);
+        public abstract void Encrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 
-        public abstract void Decrypt(byte[] buf, int length, byte[] outbuf, out int outlength);
+        public abstract void Decrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 
-        public abstract void EncryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength);
+        public abstract void EncryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 
-        public abstract void DecryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength);
+        public abstract void DecryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength);
 
         public abstract void Dispose();
 

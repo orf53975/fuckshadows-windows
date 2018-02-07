@@ -104,7 +104,7 @@ namespace Fuckshadows.Encryption.Stream
 
         #region TCP
 
-        public override void Encrypt(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void Encrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             int cipherOffset = 0;
             Debug.Assert(_encCircularBuffer != null, "_encCircularBuffer != null");
@@ -127,7 +127,7 @@ namespace Fuckshadows.Encryption.Stream
             outlength = size + cipherOffset;
         }
 
-        public override void Decrypt(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void Decrypt(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             Debug.Assert(_decCircularBuffer != null, "_circularBuffer != null");
             _decCircularBuffer.Put(buf, 0, length);
@@ -154,7 +154,7 @@ namespace Fuckshadows.Encryption.Stream
 
         #region UDP
 
-        public override void EncryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void EncryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             // Generate IV
             randBytes(outbuf, ivLen);
@@ -166,7 +166,7 @@ namespace Fuckshadows.Encryption.Stream
             }
         }
 
-        public override void DecryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
+        public override void DecryptUDP(ArraySegment<byte> buf, int length, ArraySegment<byte> outbuf, out int outlength)
         {
             // Get IV from first pos
             initCipher(buf, false);
