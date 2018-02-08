@@ -235,7 +235,7 @@ namespace test
         public void TestAEADMbedTLSEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 1; i++)
+            for (int i = 0; i < 10; i++)
             {
                 Thread t = new Thread(RunSingleAEADMbedTLSEncryptionThread);
                 threads.Add(t);
@@ -252,7 +252,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 1; i++)
+                for (int i = 0; i < 100; i++)
                 {
                     IEncryptor encryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     IEncryptor decryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
@@ -314,7 +314,7 @@ namespace test
         public void TestAEADOpenSSLEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 1; i++)
+            for (int i = 0; i < 10; i++)
             {
                 Thread t = new Thread(RunSingleAEADOpenSSLEncryptionThread);
                 threads.Add(t);
@@ -331,7 +331,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 1; i++)
+                for (int i = 0; i < 100; i++)
                 {
                     IEncryptor encryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     IEncryptor decryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
@@ -428,7 +428,7 @@ namespace test
         public void TestAEADSodiumEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 1; i++)
+            for (int i = 0; i < 10; i++)
             {
                 Thread t = new Thread(RunSingleAEADSodiumEncryptionThread);
                 threads.Add(t);
@@ -445,7 +445,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 1; i++)
+                for (int i = 0; i < 100; i++)
                 {
                     IEncryptor encryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
                     IEncryptor decryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
