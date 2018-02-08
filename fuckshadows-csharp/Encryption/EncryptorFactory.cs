@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using Fuckshadows.Encryption.AEAD;
 using Fuckshadows.Encryption.Stream;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Encryption
 {
@@ -11,7 +12,7 @@ namespace Fuckshadows.Encryption
     {
         private static Dictionary<string, Type> _registeredEncryptors = new Dictionary<string, Type>();
 
-        private static readonly Type[] ConstructorTypes = {typeof(string), typeof(string)};
+        private static readonly Type[] ConstructorTypes = {typeof(ISegmentBufferManager), typeof(string), typeof(string)};
 
         static EncryptorFactory()
         {
@@ -66,7 +67,7 @@ namespace Fuckshadows.Encryption
             }
         }
 
-        public static IEncryptor GetEncryptor(string method, string password)
+        public static IEncryptor GetEncryptor(ISegmentBufferManager bm, string method, string password)
         {
             if (method.IsNullOrEmpty())
             {
@@ -78,7 +79,7 @@ namespace Fuckshadows.Encryption
 
             ConstructorInfo c = t.GetConstructor(ConstructorTypes);
             if (c == null) throw new System.Exception("Invalid ctor");
-            IEncryptor result = (IEncryptor) c.Invoke(new object[] {method, password});
+            IEncryptor result = (IEncryptor) c.Invoke(new object[] {bm, method, password});
             return result;
         }
 

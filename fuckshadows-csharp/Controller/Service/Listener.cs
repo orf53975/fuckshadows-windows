@@ -188,8 +188,7 @@ namespace Fuckshadows.Controller
             {
                 // Full receive here to get the whole first packet and parse it in single operation
                 buf = _segmentBufferManager.BorrowBuffer();
-                var token = await clientSocket.FullReceiveTaskAsync(MaxFirstPacketLen);
-                var bytesReceived = token.BytesTotal;
+                var bytesReceived = await clientSocket.FullReceiveTaskAsync(buf, TCPRelay.RecvSize);
                 ServiceUserToken serviceToken = null;
                 Logging.Debug($"RecvFirstPacket: {bytesReceived}");
                 if (bytesReceived > 0)
@@ -197,7 +196,7 @@ namespace Fuckshadows.Controller
                     serviceToken = new ServiceUserToken
                     {
                         socket = clientSocket,
-                        firstPacket = token.PayloadBytes,
+                        firstPacket = buf.ToByteArray(bytesReceived),
                         firstPacketLength = bytesReceived
                     };
                 }

@@ -48,14 +48,13 @@ namespace Fuckshadows.Util.Sockets
         /// <exception cref="ArgumentNullException">
         /// Null <see cref="Socket"/>
         /// </exception>
-        public static async Task<TcpTrafficToken> FullReceiveTaskAsync(this Socket socket,
-            int intendedRecvSize, SocketFlags flags = SocketFlags.None)
+        public static async Task<int> FullReceiveTaskAsync(this Socket socket,
+            ArraySegment<byte> buf, int intendedRecvSize, SocketFlags flags = SocketFlags.None)
         {
             if (socket == null) throw new ArgumentNullException(nameof(socket));
             int bytesReceived = 0;
             int bytesTransffered = 0;
-            byte[] outBytes = new byte[intendedRecvSize];
-            ArraySegment<byte> tmp = outBytes.AsArraySegment(0, intendedRecvSize);
+            ArraySegment<byte> tmp = buf.Take(intendedRecvSize);
 
             while (true)
             {
@@ -66,7 +65,7 @@ namespace Fuckshadows.Util.Sockets
                 tmp = tmp.Skip(bytesTransffered);
             }
 
-            return new TcpTrafficToken(bytesReceived, outBytes);
+            return bytesReceived;
         }
 
         public static async Task<int> FullSendTaskAsync(this Socket socket,
@@ -75,7 +74,7 @@ namespace Fuckshadows.Util.Sockets
             if (socket == null) throw new ArgumentNullException(nameof(socket));
             int bytesSent = 0;
             int bytesTransffered = 0;
-            ArraySegment<byte> tmp = buf;
+            ArraySegment<byte> tmp = buf.Take(intendedSendSize);
             while (true)
             {
                 bytesTransffered = await socket.SendAsync(tmp, flags);

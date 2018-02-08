@@ -99,7 +99,7 @@ namespace Fuckshadows.Controller
                 try
                 {
                     Logging.Debug($"-----UDP relay got {length}-----");
-                    IEncryptor encryptor = EncryptorFactory.GetEncryptor(_server.method, _server.password);
+                    IEncryptor encryptor = EncryptorFactory.GetEncryptor(_segmentBufferManager, _server.method, _server.password);
 
                     // ignore leading 3 bytes
                     var dataIn = data.AsArraySegment(3, length - 3);

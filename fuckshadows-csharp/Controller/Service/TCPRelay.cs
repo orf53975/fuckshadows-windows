@@ -235,10 +235,11 @@ namespace Fuckshadows.Controller
 
         private async Task Sock5RequestRecv()
         {
+            ArraySegment<byte> buf = default(ArraySegment<byte>);
             try
             {
-                var token = await _localSocket.FullReceiveTaskAsync(TCPRelay.RecvSize);
-                var recvSize = token.BytesTotal;
+                buf = _segmentBufferManager.BorrowBuffer();
+                var recvSize = await _localSocket.FullReceiveTaskAsync(buf, TCPRelay.RecvSize);
                 Logging.Debug($"Sock5RequestRecv: {recvSize}");
                 if (recvSize <= 0)
                 {
@@ -246,7 +247,11 @@ namespace Fuckshadows.Controller
                     return;
                 }
 
-                var recvBuf = token.PayloadBytes;
+                var recvBuf = buf.ToByteArray(recvSize);
+
+                _segmentBufferManager.ReturnBuffer(buf);
+                buf = default(ArraySegment<byte>);
+
                 if (recvSize >= 5)
                 {
                     byte _command = recvBuf[1];
@@ -285,6 +290,14 @@ namespace Fuckshadows.Controller
             {
                 Logging.LogUsefulException(e);
                 Close();
+            }
+            finally
+            {
+                if (buf != default(ArraySegment<byte>))
+                {
+                    _segmentBufferManager.ReturnBuffer(buf);
+                    buf = default(ArraySegment<byte>);
+                }
             }
         }
 
@@ -434,7 +447,7 @@ namespace Fuckshadows.Controller
             if (server == null || server.server == "")
                 throw new ArgumentException("No server configured");
 
-            _encryptor = EncryptorFactory.GetEncryptor(server.method, server.password);
+            _encryptor = EncryptorFactory.GetEncryptor(_segmentBufferManager, server.method, server.password);
 
             _server = server;
 
@@ -554,7 +567,7 @@ namespace Fuckshadows.Controller
                 while (IsRunning)
                 {
                     serverRecvBuf = _segmentBufferManager.BorrowBuffer();
-                    var bytesRecved = await _serverSocket.ReceiveAsync(serverRecvBuf, SocketFlags.None);
+                    var bytesRecved = await _serverSocket.FullReceiveTaskAsync(serverRecvBuf, TCPRelay.RecvSize);
                     Logging.Debug($"Downstream server recv: {bytesRecved}");
 
                     if (bytesRecved == 0)
@@ -570,7 +583,7 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
-                    Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
+                    Debug.Assert(bytesRecved <= TCPRelay.BufferSize);
                     _tcprelay.UpdateInboundCounter(_server, bytesRecved);
                     lastActivity = DateTime.Now;
                     localSendBuf = _segmentBufferManager.BorrowBuffer();
@@ -642,7 +655,7 @@ namespace Fuckshadows.Controller
                 while (IsRunning)
                 {
                     localRecvBuf = _segmentBufferManager.BorrowBuffer();
-                    var bytesRecved = await _localSocket.ReceiveAsync(localRecvBuf, SocketFlags.None);
+                    var bytesRecved = await _localSocket.FullReceiveTaskAsync(localRecvBuf, TCPRelay.RecvSize);
                     Logging.Debug($"Upstream local recv: {bytesRecved}");
                     if (bytesRecved == 0)
                     {
@@ -657,7 +670,7 @@ namespace Fuckshadows.Controller
                         Close();
                         return;
                     }
-                    Debug.Assert(bytesRecved <= TCPRelay.RecvSize);
+                    Debug.Assert(bytesRecved <= TCPRelay.BufferSize);
 
                     serverSendBuf = _segmentBufferManager.BorrowBuffer();
 
@@ -684,7 +697,7 @@ namespace Fuckshadows.Controller
                         return;
                     }
                     
-                    Debug.Assert(bytesSent == encBufLen);
+                    Debug.Assert(bytesSent == encBufLen, $"realSent={bytesSent},intendSend={encBufLen}");
 
                     _segmentBufferManager.ReturnBuffer(serverSendBuf);
                     serverSendBuf = default(ArraySegment<byte>);

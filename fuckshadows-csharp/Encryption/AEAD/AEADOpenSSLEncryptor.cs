@@ -31,7 +31,7 @@ namespace Fuckshadows.Encryption.AEAD
             {"aes-128-gcm", new EncryptorInfo("aes-128-gcm", 16, 16, 12, 16, CIPHER_AES)},
             {"aes-192-gcm", new EncryptorInfo("aes-192-gcm", 24, 24, 12, 16, CIPHER_AES)},
             {"aes-256-gcm", new EncryptorInfo("aes-256-gcm", 32, 32, 12, 16, CIPHER_AES)},
-            //{"chacha20-ietf-poly1305", new EncryptorInfo("chacha20-poly1305", 32, 32, 12, 16, CIPHER_CHACHA20IETFPOLY1305)}
+            {"chacha20-ietf-poly1305", new EncryptorInfo("chacha20-poly1305", 32, 32, 12, 16, CIPHER_CHACHA20IETFPOLY1305)}
         };
 
         public static List<string> SupportedCiphers()
