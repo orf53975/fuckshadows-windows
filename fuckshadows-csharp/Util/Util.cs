@@ -1,10 +1,16 @@
-﻿using System;
+﻿/*
+ * Due to interop between C DLL, we use unsafe code and check bound ourselves
+ */
+#define INCLUDE_UNSAFE
+
+using System;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using Fuckshadows.Controller;
 using Microsoft.Win32;
+
 
 namespace Fuckshadows.Util
 {

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Fuckshadows.Encryption.Exception;
-using static Fuckshadows.Util.Utils;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Encryption.Stream
 {
@@ -21,17 +21,18 @@ namespace Fuckshadows.Encryption.Stream
         protected byte[] _encryptBuf;
         protected byte[] _decryptBuf;
 
-        public StreamSodiumEncryptor(string method, string password)
-            : base(method, password)
+        public StreamSodiumEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
             _encryptBuf = new byte[MAX_INPUT_SIZE + SODIUM_BLOCK_SIZE];
             _decryptBuf = new byte[MAX_INPUT_SIZE + SODIUM_BLOCK_SIZE];
         }
 
-        private static readonly Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo> {
-            { "salsa20", new EncryptorInfo(32, 8, CIPHER_SALSA20) },
-            { "chacha20", new EncryptorInfo(32, 8, CIPHER_CHACHA20) },
-            { "chacha20-ietf", new EncryptorInfo(32, 12, CIPHER_CHACHA20_IETF) }
+        private static readonly Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo>
+        {
+            {"salsa20", new EncryptorInfo(32, 8, CIPHER_SALSA20)},
+            {"chacha20", new EncryptorInfo(32, 8, CIPHER_CHACHA20)},
+            {"chacha20-ietf", new EncryptorInfo(32, 12, CIPHER_CHACHA20_IETF)}
         };
 
         protected override Dictionary<string, EncryptorInfo> getCiphers()
@@ -44,7 +45,8 @@ namespace Fuckshadows.Encryption.Stream
             return new List<string>(_ciphers.Keys);
         }
 
-        protected override void cipherUpdate(bool isEncrypt, int length, byte[] buf, byte[] outbuf)
+        protected override void cipherUpdate(bool isEncrypt, int length, ArraySegment<byte> buf,
+            ArraySegment<byte> outbuf)
         {
             // TODO write a unidirection cipher so we don't have to if if if
             int bytesRemaining;
@@ -67,26 +69,56 @@ namespace Fuckshadows.Encryption.Stream
                 sodiumBuf = _decryptBuf;
                 iv = _decryptIV;
             }
+
             int padding = bytesRemaining;
-            PerfByteCopy(buf, 0, sodiumBuf, padding, length);
+            ArraySegment<byte> sodiumBufSeg = sodiumBuf.AsArraySegment();
+            ArraySegmentExtensions.BlockCopy(buf, 0, sodiumBufSeg, padding, length);
 
             switch (_cipher)
             {
                 case CIPHER_SALSA20:
-                    ret = Sodium.crypto_stream_salsa20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
+                    unsafe
+                    {
+                        fixed (byte* sodiumBufP = sodiumBuf, ivP = iv, keyP = _key)
+                        {
+                            ret = Sodium.crypto_stream_salsa20_xor_ic(sodiumBufP, sodiumBufP,
+                                (ulong) (padding + length), ivP,
+                                ic, keyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_CHACHA20:
-                    ret = Sodium.crypto_stream_chacha20_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, ic, _key);
+                    unsafe
+                    {
+                        fixed (byte* sodiumBufP = sodiumBuf, ivP = iv, keyP = _key)
+                        {
+                            ret = Sodium.crypto_stream_chacha20_xor_ic(sodiumBufP, sodiumBufP,
+                                (ulong) (padding + length), ivP, ic,
+                                keyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_CHACHA20_IETF:
-                    ret = Sodium.crypto_stream_chacha20_ietf_xor_ic(sodiumBuf, sodiumBuf, (ulong)(padding + length), iv, (uint)ic, _key);
+                    unsafe
+                    {
+                        fixed (byte* sodiumBufP = sodiumBuf, ivP = iv, keyP = _key)
+                        {
+                            ret = Sodium.crypto_stream_chacha20_ietf_xor_ic(sodiumBufP, sodiumBufP,
+                                (ulong) (padding + length),
+                                ivP, (uint) ic, keyP);
+                        }
+                    }
+
                     break;
             }
+
             if (ret != 0) throw new CryptoErrorException();
 
-            PerfByteCopy(sodiumBuf, padding, outbuf, 0, length);
+            ArraySegmentExtensions.BlockCopy(sodiumBufSeg, padding, outbuf, 0, length);
             padding += length;
-            ic += (ulong)padding / SODIUM_BLOCK_SIZE;
+            ic += (ulong) padding / SODIUM_BLOCK_SIZE;
             bytesRemaining = padding % SODIUM_BLOCK_SIZE;
 
             if (isEncrypt)

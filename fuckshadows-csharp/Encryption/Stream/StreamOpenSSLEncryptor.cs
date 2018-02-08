@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using Fuckshadows.Encryption.Exception;
+using Fuckshadows.Util.Sockets.Buffer;
 
 
 namespace Fuckshadows.Encryption.Stream
@@ -18,25 +19,25 @@ namespace Fuckshadows.Encryption.Stream
         private IntPtr _encryptCtx = IntPtr.Zero;
         private IntPtr _decryptCtx = IntPtr.Zero;
 
-        public StreamOpenSSLEncryptor(string method, string password)
-            : base(method, password)
+        public StreamOpenSSLEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
         }
 
         // XXX: name=RC4,blkSz=1,keyLen=16,ivLen=0, do NOT pass IV to it
         private static readonly Dictionary<string, EncryptorInfo> _ciphers = new Dictionary<string, EncryptorInfo>
         {
-            { "aes-128-cfb", new EncryptorInfo("AES-128-CFB", 16, 16, CIPHER_AES) },
-            { "aes-192-cfb", new EncryptorInfo("AES-192-CFB", 24, 16, CIPHER_AES) },
-            { "aes-256-cfb", new EncryptorInfo("AES-256-CFB", 32, 16, CIPHER_AES) },
-            { "aes-128-ctr", new EncryptorInfo("aes-128-ctr", 16, 16, CIPHER_AES) },
-            { "aes-192-ctr", new EncryptorInfo("aes-192-ctr", 24, 16, CIPHER_AES) },
-            { "aes-256-ctr", new EncryptorInfo("aes-256-ctr", 32, 16, CIPHER_AES) },
-            { "bf-cfb", new EncryptorInfo("bf-cfb64", 16, 8, CIPHER_BLOWFISH) },
-            { "camellia-128-cfb", new EncryptorInfo("CAMELLIA-128-CFB", 16, 16, CIPHER_CAMELLIA) },
-            { "camellia-192-cfb", new EncryptorInfo("CAMELLIA-192-CFB", 24, 16, CIPHER_CAMELLIA) },
-            { "camellia-256-cfb", new EncryptorInfo("CAMELLIA-256-CFB", 32, 16, CIPHER_CAMELLIA) },
-            { "rc4-md5", new EncryptorInfo("RC4", 16, 16, CIPHER_RC4) },
+            {"aes-128-cfb", new EncryptorInfo("AES-128-CFB", 16, 16, CIPHER_AES)},
+            {"aes-192-cfb", new EncryptorInfo("AES-192-CFB", 24, 16, CIPHER_AES)},
+            {"aes-256-cfb", new EncryptorInfo("AES-256-CFB", 32, 16, CIPHER_AES)},
+            {"aes-128-ctr", new EncryptorInfo("aes-128-ctr", 16, 16, CIPHER_AES)},
+            {"aes-192-ctr", new EncryptorInfo("aes-192-ctr", 24, 16, CIPHER_AES)},
+            {"aes-256-ctr", new EncryptorInfo("aes-256-ctr", 32, 16, CIPHER_AES)},
+            {"bf-cfb", new EncryptorInfo("bf-cfb64", 16, 8, CIPHER_BLOWFISH)},
+            {"camellia-128-cfb", new EncryptorInfo("CAMELLIA-128-CFB", 16, 16, CIPHER_CAMELLIA)},
+            {"camellia-192-cfb", new EncryptorInfo("CAMELLIA-192-CFB", 24, 16, CIPHER_CAMELLIA)},
+            {"camellia-256-cfb", new EncryptorInfo("CAMELLIA-256-CFB", 32, 16, CIPHER_CAMELLIA)},
+            {"rc4-md5", new EncryptorInfo("RC4", 16, 16, CIPHER_RC4)},
             // it's using ivLen=16, not compatible
             //{ "chacha20-ietf", new EncryptorInfo("chacha20", 32, 12, CIPHER_CHACHA20_IETF) }
         };
@@ -51,14 +52,14 @@ namespace Fuckshadows.Encryption.Stream
             return _ciphers;
         }
 
-        protected override void initCipher(byte[] iv, bool isEncrypt)
+        protected override void initCipher(ArraySegment<byte> iv, bool isEncrypt)
         {
             base.initCipher(iv, isEncrypt);
             IntPtr cipherInfo = OpenSSL.GetCipherInfo(_innerLibName);
             if (cipherInfo == IntPtr.Zero) throw new System.Exception("openssl: cipher not found");
             IntPtr ctx = OpenSSL.EVP_CIPHER_CTX_new();
             if (ctx == IntPtr.Zero) throw new System.Exception("fail to create ctx");
-            
+
             if (isEncrypt)
             {
                 _encryptCtx = ctx;
@@ -72,29 +73,41 @@ namespace Fuckshadows.Encryption.Stream
             if (_method == "rc4-md5")
             {
                 byte[] temp = new byte[keyLen + ivLen];
+                var tempSeg = temp.AsArraySegment();
                 realkey = new byte[keyLen];
                 Array.Copy(_key, 0, temp, 0, keyLen);
-                Array.Copy(iv, 0, temp, keyLen, ivLen);
+                ArraySegmentExtensions.BlockCopy(iv, 0, tempSeg, keyLen, ivLen);
                 realkey = MbedTLS.MD5(temp);
             }
             else
             {
                 realkey = _key;
             }
-            
-            var ret = OpenSSL.EVP_CipherInit_ex(ctx, cipherInfo, IntPtr.Zero, null,null,
+
+            var ret = OpenSSL.EVP_CipherInit_ex(ctx, cipherInfo, IntPtr.Zero, null, null,
                 isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
             if (ret != 1) throw new System.Exception("openssl: fail to set key length");
             ret = OpenSSL.EVP_CIPHER_CTX_set_key_length(ctx, keyLen);
             if (ret != 1) throw new System.Exception("openssl: fail to set key length");
-            ret = OpenSSL.EVP_CipherInit_ex(ctx, IntPtr.Zero, IntPtr.Zero, realkey,
-                _method == "rc4-md5" ? null : iv,
-                isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
+            if (_method == "rc4-md5")
+            {
+                ret = OpenSSL.EVP_CipherInit_ex(ctx, IntPtr.Zero, IntPtr.Zero, realkey,
+                    null,
+                    isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
+            }
+            else
+            {
+                ret = OpenSSL.EVP_CipherInit_ex(ctx, IntPtr.Zero, IntPtr.Zero, realkey,
+                    isEncrypt ? _encryptIV : _decryptIV,
+                    isEncrypt ? OpenSSL.OPENSSL_ENCRYPT : OpenSSL.OPENSSL_DECRYPT);
+            }
+
             if (ret != 1) throw new System.Exception("openssl: cannot set key and iv");
             OpenSSL.EVP_CIPHER_CTX_set_padding(ctx, 0);
         }
 
-        protected override void cipherUpdate(bool isEncrypt, int length, byte[] buf, byte[] outbuf)
+        protected override void cipherUpdate(bool isEncrypt, int length, ArraySegment<byte> buf,
+            ArraySegment<byte> outbuf)
         {
             // C# could be multi-threaded
             if (_disposed)
@@ -102,8 +115,19 @@ namespace Fuckshadows.Encryption.Stream
                 throw new ObjectDisposedException(this.ToString());
             }
 
-            var ret = OpenSSL.EVP_CipherUpdate(isEncrypt ? _encryptCtx : _decryptCtx,
-                outbuf, out var outlen, buf, length);
+            int ret;
+            int outlen;
+
+            unsafe
+            {
+                fixed (byte* inP = &buf.Array[buf.Offset],
+                    outP = &outbuf.Array[outbuf.Offset])
+                {
+                    ret = OpenSSL.EVP_CipherUpdate(isEncrypt ? _encryptCtx : _decryptCtx,
+                        outP, out outlen, inP, length);
+                }
+            }
+
             if (ret != 1)
                 throw new CryptoErrorException($"ret is {ret}");
             Debug.Assert(outlen == length);

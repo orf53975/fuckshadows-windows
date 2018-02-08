@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Fuckshadows.Controller;
 using Fuckshadows.Encryption.Exception;
+using Fuckshadows.Util.Sockets.Buffer;
 
 namespace Fuckshadows.Encryption.AEAD
 {
@@ -17,8 +18,8 @@ namespace Fuckshadows.Encryption.AEAD
         private byte[] _sodiumEncSubkey;
         private byte[] _sodiumDecSubkey;
 
-        public AEADSodiumEncryptor(string method, string password)
-            : base(method, password)
+        public AEADSodiumEncryptor(ISegmentBufferManager bm, string method, string password)
+            : base(bm, method, password)
         {
             _sodiumEncSubkey = new byte[keyLen];
             _sodiumDecSubkey = new byte[keyLen];
@@ -42,7 +43,7 @@ namespace Fuckshadows.Encryption.AEAD
             return _ciphers;
         }
 
-        public override void InitCipher(byte[] salt, bool isEncrypt, bool isUdp)
+        public override void InitCipher(ArraySegment<byte> salt, bool isEncrypt, bool isUdp)
         {
             base.InitCipher(salt, isEncrypt, isUdp);
             // UDP: master key
@@ -66,7 +67,8 @@ namespace Fuckshadows.Encryption.AEAD
         }
 
 
-        public override void cipherEncrypt(byte[] plaintext, uint plen, byte[] ciphertext, ref uint clen)
+        public override void cipherEncrypt(ArraySegment<byte> plaintext, int plen, ArraySegment<byte> ciphertext,
+            ref int clen)
         {
             Debug.Assert(_sodiumEncSubkey != null);
             // buf: all plaintext
@@ -75,46 +77,88 @@ namespace Fuckshadows.Encryption.AEAD
             ulong encClen = 0;
             Logging.DumpByteArray("_encNonce before enc", _encNonce, nonceLen);
             Logging.DumpByteArray("_sodiumEncSubkey", _sodiumEncSubkey, keyLen);
-            Logging.DumpByteArray("before cipherEncrypt: plain", plaintext, (int) plen);
+            Logging.DumpByteArraySegment("before cipherEncrypt: plain", plaintext, (int) plen);
             switch (_cipher)
             {
                 case CIPHER_CHACHA20POLY1305:
-                    ret = Sodium.crypto_aead_chacha20poly1305_encrypt(ciphertext, ref encClen,
-                        plaintext, (ulong) plen,
-                        null, 0,
-                        null, _encNonce,
-                        _sodiumEncSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _encNonce,
+                            subkeyP = _sodiumEncSubkey)
+                        {
+                            ret = Sodium.crypto_aead_chacha20poly1305_encrypt(cP, ref encClen,
+                                pP, (ulong) plen,
+                                default(byte*), 0,
+                                default(byte*), nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_CHACHA20IETFPOLY1305:
-                    ret = Sodium.crypto_aead_chacha20poly1305_ietf_encrypt(ciphertext, ref encClen,
-                        plaintext, (ulong) plen,
-                        null, 0,
-                        null, _encNonce,
-                        _sodiumEncSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _encNonce,
+                            subkeyP = _sodiumEncSubkey)
+                        {
+                            ret = Sodium.crypto_aead_chacha20poly1305_ietf_encrypt(cP, ref encClen,
+                                pP, (ulong) plen,
+                                default(byte*), 0,
+                                default(byte*), nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_XCHACHA20IETFPOLY1305:
-                    ret = Sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(ciphertext, ref encClen,
-                        plaintext, (ulong)plen,
-                        null, 0,
-                        null, _encNonce,
-                        _sodiumEncSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _encNonce,
+                            subkeyP = _sodiumEncSubkey)
+                        {
+                            ret = Sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(cP, ref encClen,
+                                pP, (ulong) plen,
+                                default(byte*), 0,
+                                default(byte*), nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_AES256GCM:
-                    ret = Sodium.crypto_aead_aes256gcm_encrypt(ciphertext, ref encClen,
-                        plaintext, (ulong)plen,
-                        null, 0,
-                        null, _encNonce,
-                        _sodiumEncSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _encNonce,
+                            subkeyP = _sodiumEncSubkey)
+                        {
+                            ret = Sodium.crypto_aead_aes256gcm_encrypt(cP, ref encClen,
+                                pP, (ulong) plen,
+                                default(byte*), 0,
+                                default(byte*), nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 default:
                     throw new System.Exception("not implemented");
             }
+
             if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
-            Logging.DumpByteArray("after cipherEncrypt: cipher", ciphertext, (int) encClen);
-            clen = (uint) encClen;
+            Logging.DumpByteArraySegment("after cipherEncrypt: cipher", ciphertext, (int) encClen);
+            clen = (int) encClen;
         }
 
-        public override void cipherDecrypt(byte[] ciphertext, uint clen, byte[] plaintext, ref uint plen)
+        public override void cipherDecrypt(ArraySegment<byte> ciphertext, int clen, ArraySegment<byte> plaintext,
+            ref int plen)
         {
             Debug.Assert(_sodiumDecSubkey != null);
             // buf: ciphertext + tag
@@ -123,44 +167,84 @@ namespace Fuckshadows.Encryption.AEAD
             ulong decPlen = 0;
             Logging.DumpByteArray("_decNonce before dec", _decNonce, nonceLen);
             Logging.DumpByteArray("_sodiumDecSubkey", _sodiumDecSubkey, keyLen);
-            Logging.DumpByteArray("before cipherDecrypt: cipher", ciphertext, (int) clen);
+            Logging.DumpByteArraySegment("before cipherDecrypt: cipher", ciphertext, (int) clen);
             switch (_cipher)
             {
                 case CIPHER_CHACHA20POLY1305:
-                    ret = Sodium.crypto_aead_chacha20poly1305_decrypt(plaintext, ref decPlen,
-                        null,
-                        ciphertext, (ulong) clen,
-                        null, 0,
-                        _decNonce, _sodiumDecSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _decNonce,
+                            subkeyP = _sodiumDecSubkey)
+                        {
+                            ret = Sodium.crypto_aead_chacha20poly1305_decrypt(pP, ref decPlen,
+                                default(byte*), cP,
+                                (ulong) clen, default(byte*),
+                                0, nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_CHACHA20IETFPOLY1305:
-                    ret = Sodium.crypto_aead_chacha20poly1305_ietf_decrypt(plaintext, ref decPlen,
-                        null,
-                        ciphertext, (ulong) clen,
-                        null, 0,
-                        _decNonce, _sodiumDecSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _decNonce,
+                            subkeyP = _sodiumDecSubkey)
+                        {
+                            ret = Sodium.crypto_aead_chacha20poly1305_ietf_decrypt(pP, ref decPlen,
+                                default(byte*), cP,
+                                (ulong) clen, default(byte*),
+                                0, nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_XCHACHA20IETFPOLY1305:
-                    ret = Sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(plaintext, ref decPlen,
-                        null,
-                        ciphertext, (ulong)clen,
-                        null, 0,
-                        _decNonce, _sodiumDecSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _decNonce,
+                            subkeyP = _sodiumDecSubkey)
+                        {
+                            ret = Sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(pP, ref decPlen,
+                                default(byte*), cP,
+                                (ulong) clen, default(byte*),
+                                0, nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 case CIPHER_AES256GCM:
-                    ret = Sodium.crypto_aead_aes256gcm_decrypt(plaintext, ref decPlen,
-                        null,
-                        ciphertext, (ulong)clen,
-                        null, 0,
-                        _decNonce, _sodiumDecSubkey);
+                    unsafe
+                    {
+                        fixed (byte* cP = &ciphertext.Array[ciphertext.Offset],
+                            pP = &plaintext.Array[plaintext.Offset],
+                            nonceP = _decNonce,
+                            subkeyP = _sodiumDecSubkey)
+                        {
+                            ret = Sodium.crypto_aead_aes256gcm_decrypt(pP, ref decPlen,
+                                default(byte*), cP,
+                                (ulong) clen, default(byte*),
+                                0, nonceP,
+                                subkeyP);
+                        }
+                    }
+
                     break;
                 default:
                     throw new System.Exception("not implemented");
             }
 
             if (ret != 0) throw new CryptoErrorException($"ret is {ret}");
-            Logging.DumpByteArray("after cipherDecrypt: plain", plaintext, (int) decPlen);
-            plen = (uint) decPlen;
+            Logging.DumpByteArraySegment("after cipherDecrypt: plain", plaintext, (int) decPlen);
+            plen = (int) decPlen;
         }
 
         public override void Dispose()

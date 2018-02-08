@@ -113,7 +113,7 @@ namespace Fuckshadows.Encryption.Stream
             if (! _encryptIVSent) {
                 // Generate IV
                 byte[] ivBytes = new byte[ivLen];
-                var ivSeg = ivBytes.AsArraySegment(ivLen);
+                var ivSeg = ivBytes.AsArraySegment(0, ivLen);
                 randBytes(ivSeg, ivLen);
                 initCipher(ivSeg, true);
                 

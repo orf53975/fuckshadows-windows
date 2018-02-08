@@ -91,7 +91,7 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int cipher_update(IntPtr ctx, byte[] input, int ilen, byte[] output, ref int olen);
+        public static extern unsafe int cipher_update(IntPtr ctx, byte* input, int ilen, byte* output, ref int olen);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
@@ -99,21 +99,21 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int cipher_auth_encrypt(IntPtr ctx,
-            byte[] iv, uint iv_len,
+        public static extern unsafe int cipher_auth_encrypt(IntPtr ctx,
+            byte* iv, uint iv_len,
             IntPtr ad, uint ad_len,
-            byte[] input, uint ilen,
-            byte[] output, ref uint olen,
-            byte[] tag, uint tag_len);
+            byte* input, uint ilen,
+            byte* output, ref uint olen,
+            byte* tag, uint tag_len);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int cipher_auth_decrypt(IntPtr ctx,
-            byte[] iv, uint iv_len,
+        public static extern unsafe int cipher_auth_decrypt(IntPtr ctx,
+            byte* iv, uint iv_len,
             IntPtr ad, uint ad_len,
-            byte[] input, uint ilen,
-            byte[] output, ref uint olen,
-            byte[] tag, uint tag_len);
+            byte* input, uint ilen,
+            byte* output, ref uint olen,
+            byte* tag, uint tag_len);
 
         #endregion
     }

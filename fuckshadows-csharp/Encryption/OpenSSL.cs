@@ -69,52 +69,52 @@ namespace Fuckshadows.Encryption
             if (ret != 1) throw new System.Exception("openssl: fail to set AEAD nonce");
         }
 
-        public static void AEADGetTag(IntPtr ctx, byte[] tagbuf, int taglen)
-        {
-            IntPtr tagBufIntPtr = IntPtr.Zero;
-            try
-            {
-                tagBufIntPtr = Marshal.AllocHGlobal(taglen);
-                var ret = EVP_CIPHER_CTX_ctrl(ctx,
-                    EVP_CTRL_AEAD_GET_TAG, taglen, tagBufIntPtr);
-                if (ret != 1) throw new CryptoErrorException("openssl: fail to get AEAD tag");
-                // take tag from unmanaged memory
-                Marshal.Copy(tagBufIntPtr, tagbuf, 0, taglen);
-            }
-            finally
-            {
-                if (tagBufIntPtr != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(tagBufIntPtr);
-                }
-            }
-        }
+//        public static void AEADGetTag(IntPtr ctx, byte[] tagbuf, int taglen)
+//        {
+//            IntPtr tagBufIntPtr = IntPtr.Zero;
+//            try
+//            {
+//                tagBufIntPtr = Marshal.AllocHGlobal(taglen);
+//                var ret = EVP_CIPHER_CTX_ctrl(ctx,
+//                    EVP_CTRL_AEAD_GET_TAG, taglen, tagBufIntPtr);
+//                if (ret != 1) throw new CryptoErrorException("openssl: fail to get AEAD tag");
+//                // take tag from unmanaged memory
+//                Marshal.Copy(tagBufIntPtr, tagbuf, 0, taglen);
+//            }
+//            finally
+//            {
+//                if (tagBufIntPtr != IntPtr.Zero)
+//                {
+//                    Marshal.FreeHGlobal(tagBufIntPtr);
+//                }
+//            }
+//        }
 
-        public static void AEADSetTag(IntPtr ctx, byte[] tagbuf, int taglen)
-        {
-            IntPtr tagBufIntPtr = IntPtr.Zero;
-            try
-            {
-                // allocate unmanaged memory for tag
-                tagBufIntPtr = Marshal.AllocHGlobal(taglen);
-
-                // copy tag to unmanaged memory
-                Marshal.Copy(tagbuf, 0, tagBufIntPtr, taglen);
-
-                var ret = EVP_CIPHER_CTX_ctrl(ctx,
-                    EVP_CTRL_AEAD_SET_TAG, taglen, tagBufIntPtr);
-
-                if (ret != 1) throw new CryptoErrorException("openssl: fail to set AEAD tag");
-
-            }
-            finally
-            {
-                if (tagBufIntPtr != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(tagBufIntPtr);
-                }
-            }
-        }
+//        public static void AEADSetTag(IntPtr ctx, byte[] tagbuf, int taglen)
+//        {
+//            IntPtr tagBufIntPtr = IntPtr.Zero;
+//            try
+//            {
+//                // allocate unmanaged memory for tag
+//                tagBufIntPtr = Marshal.AllocHGlobal(taglen);
+//
+//                // copy tag to unmanaged memory
+//                Marshal.Copy(tagbuf, 0, tagBufIntPtr, taglen);
+//
+//                var ret = EVP_CIPHER_CTX_ctrl(ctx,
+//                    EVP_CTRL_AEAD_SET_TAG, taglen, tagBufIntPtr);
+//
+//                if (ret != 1) throw new CryptoErrorException("openssl: fail to set AEAD tag");
+//
+//            }
+//            finally
+//            {
+//                if (tagBufIntPtr != IntPtr.Zero)
+//                {
+//                    Marshal.FreeHGlobal(tagBufIntPtr);
+//                }
+//            }
+//        }
 
         [DllImport("Kernel32.dll")]
         private static extern IntPtr LoadLibrary(string path);
@@ -138,12 +138,12 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int EVP_CipherUpdate(IntPtr ctx, byte[] outb,
-            out int outl, byte[] inb, int inl);
+        public static extern unsafe int EVP_CipherUpdate(IntPtr ctx, byte* outb,
+            out int outl, byte* inb, int inl);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int EVP_CipherFinal_ex(IntPtr ctx, byte[] outm, ref int outl);
+        public static extern unsafe int EVP_CipherFinal_ex(IntPtr ctx, byte* outm, ref int outl);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
@@ -153,9 +153,10 @@ namespace Fuckshadows.Encryption
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern int EVP_CIPHER_CTX_set_key_length(IntPtr x, int keylen);
 
+        // XXX: In general, we use it to get/set tag and pass argument which set ptr to NULL
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int EVP_CIPHER_CTX_ctrl(IntPtr ctx, int type, int arg, IntPtr ptr);
+        public static extern unsafe int EVP_CIPHER_CTX_ctrl(IntPtr ctx, int type, int arg, byte* ptr);
 
         /// <summary>
         /// simulate NUL-terminated string

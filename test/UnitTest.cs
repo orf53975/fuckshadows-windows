@@ -235,7 +235,7 @@ namespace test
         public void TestAEADMbedTLSEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 1; i++)
             {
                 Thread t = new Thread(RunSingleAEADMbedTLSEncryptionThread);
                 threads.Add(t);
@@ -252,7 +252,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 1; i++)
                 {
                     IEncryptor encryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     IEncryptor decryptor = new AEADMbedTLSEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
@@ -314,7 +314,7 @@ namespace test
         public void TestAEADOpenSSLEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 1; i++)
             {
                 Thread t = new Thread(RunSingleAEADOpenSSLEncryptionThread);
                 threads.Add(t);
@@ -331,7 +331,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 1; i++)
                 {
                     IEncryptor encryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
                     IEncryptor decryptor1 = new AEADOpenSSLEncryptor(_segmentBufferManager, "aes-256-gcm", "barfoo!");
@@ -428,7 +428,7 @@ namespace test
         public void TestAEADSodiumEncryption()
         {
             List<Thread> threads = new List<Thread>();
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 1; i++)
             {
                 Thread t = new Thread(RunSingleAEADSodiumEncryptionThread);
                 threads.Add(t);
@@ -445,7 +445,7 @@ namespace test
         {
             try
             {
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 1; i++)
                 {
                     IEncryptor encryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
                     IEncryptor decryptor = new AEADSodiumEncryptor(_segmentBufferManager, "chacha20-poly1305", "barfoo!");
@@ -542,12 +542,15 @@ namespace test
             var cipherSeg = cipher.AsArraySegment();
             var plain2Seg = plain2.AsArraySegment();
 
+            var saltSeg = saltBytes.AsArraySegment();
+
+
             int cipherLen;
             int plain2Len;
             _random.NextBytes(plain);
-            encryptor.InitCipher(saltBytes, true, true);
+            encryptor.InitCipher(saltSeg, true, true);
             encryptor.EncryptUDP(plainSeg, 4096, cipherSeg, out cipherLen);
-            decryptor.InitCipher(saltBytes, false, true);
+            decryptor.InitCipher(saltSeg, false, true);
             decryptor.DecryptUDP(cipherSeg, cipherLen, plain2Seg, out plain2Len);
             Assert.IsTrue(plain2Len == 4096);
             AssertEqualsWithCount(plainSeg, 0, plain2Seg, 0, 4096);
@@ -580,17 +583,28 @@ namespace test
             byte[] m2 = new byte[m.Length];
             ulong found_clen = 0;
             ulong m2len = 0;
-            Sodium.crypto_aead_chacha20poly1305_encrypt(c, ref found_clen, m, (ulong) m.Length,
-                ad, (ulong) ad.Length,
-                null, nonce, firstkey);
+            unsafe
+            {
+                fixed (byte* cP = c, mP = m, adP = ad, nonceP = nonce, firstkeyP = firstkey)
+                {
+                    Sodium.crypto_aead_chacha20poly1305_encrypt(cP, ref found_clen, mP, (ulong) m.Length,
+                        adP, (ulong) ad.Length,
+                        null, nonceP, firstkeyP);
+                }
+            }
             for (int i = 0; i < c.Length; i++)
             {
                 Assert.AreEqual(c_ref[i], c[i]);
             }
-
-            Sodium.crypto_aead_chacha20poly1305_decrypt(m2, ref m2len, null, c, (ulong) c.Length,
-                ad, (ulong) ad.Length,
-                nonce, firstkey);
+            unsafe
+            {
+                fixed (byte* cP = c, m2P = m2, adP = ad, nonceP = nonce, firstkeyP = firstkey)
+                {
+                    Sodium.crypto_aead_chacha20poly1305_decrypt(m2P, ref m2len, null, cP, (ulong) c.Length,
+                        adP, (ulong) ad.Length,
+                        nonceP, firstkeyP);
+                }
+            }
             Assert.AreEqual(m2len, m.Length);
         }
     }

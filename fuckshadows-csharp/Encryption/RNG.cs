@@ -6,19 +6,35 @@ namespace Fuckshadows.Encryption
     {
         public static void GetBytes(byte[] buf)
         {
-            Sodium.randombytes_buf(buf, buf.Length);
+            unsafe
+            {
+                fixed (byte* ptr = buf)
+                {
+                    Sodium.randombytes_buf(ptr, buf.Length);
+                }
+            }
         }
 
         public static void GetBytes(byte[] data, int offset, int count)
         {
-            byte[] tmp = new byte[count];
-            Sodium.randombytes_buf(tmp, count);
-            Buffer.BlockCopy(tmp, 0, data, offset, count);
+            unsafe
+            {
+                fixed (byte* ptr = &data[offset])
+                {
+                    Sodium.randombytes_buf(ptr, count);
+                }
+            }
         }
 
         public static void GetBytes(byte[] buf, int len)
         {
-            Sodium.randombytes_buf(buf, len);
+            unsafe
+            {
+                fixed (byte* ptr = buf)
+                {
+                    Sodium.randombytes_buf(ptr, len);
+                }
+            }
         }
     }
 }

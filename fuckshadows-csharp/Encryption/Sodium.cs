@@ -73,13 +73,13 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void randombytes_buf(byte[] buf, int size);
+        public static extern unsafe void randombytes_buf(byte* buf, int size);
 
         #region AEAD
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int sodium_increment(byte[] n, int nlen);
+        public static extern unsafe int sodium_increment(byte* n, int nlen);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
@@ -93,43 +93,43 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_chacha20poly1305_ietf_encrypt(byte[] c, ref ulong clen_p, byte[] m,
-            ulong mlen, byte[] ad, ulong adlen, byte[] nsec, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_chacha20poly1305_ietf_encrypt(byte* c, ref ulong clen_p, byte* m,
+            ulong mlen, byte* ad, ulong adlen, byte* nsec, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_chacha20poly1305_ietf_decrypt(byte[] m, ref ulong mlen_p,
-            byte[] nsec, byte[] c, ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_chacha20poly1305_ietf_decrypt(byte* m, ref ulong mlen_p,
+            byte* nsec, byte* c, ulong clen, byte* ad, ulong adlen, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_chacha20poly1305_encrypt(byte[] c, ref ulong clen_p, byte[] m, ulong mlen,
-            byte[] ad, ulong adlen, byte[] nsec, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_chacha20poly1305_encrypt(byte* c, ref ulong clen_p, byte* m,
+            ulong mlen, byte* ad, ulong adlen, byte* nsec, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_chacha20poly1305_decrypt(byte[] m, ref ulong mlen_p, byte[] nsec, byte[] c,
-            ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_chacha20poly1305_decrypt(byte* m, ref ulong mlen_p,
+            byte* nsec, byte* c, ulong clen, byte* ad, ulong adlen, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_xchacha20poly1305_ietf_encrypt(byte[] c, ref ulong clen_p, byte[] m, ulong mlen,
-            byte[] ad, ulong adlen, byte[] nsec, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_xchacha20poly1305_ietf_encrypt(byte* c, ref ulong clen_p, byte* m,
+            ulong mlen, byte* ad, ulong adlen, byte* nsec, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_xchacha20poly1305_ietf_decrypt(byte[] m, ref ulong mlen_p, byte[] nsec, byte[] c,
-            ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_xchacha20poly1305_ietf_decrypt(byte* m, ref ulong mlen_p,
+            byte* nsec, byte* c, ulong clen, byte* ad, ulong adlen, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_aes256gcm_encrypt(byte[] c, ref ulong clen_p, byte[] m, ulong mlen,
-            byte[] ad, ulong adlen, byte[] nsec, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_aes256gcm_encrypt(byte* c, ref ulong clen_p, byte* m,
+            ulong mlen, byte* ad, ulong adlen, byte* nsec, byte* npub, byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_aead_aes256gcm_decrypt(byte[] m, ref ulong mlen_p, byte[] nsec, byte[] c,
-            ulong clen, byte[] ad, ulong adlen, byte[] npub, byte[] k);
+        public static extern unsafe int crypto_aead_aes256gcm_decrypt(byte* m, ref ulong mlen_p,
+            byte* nsec, byte* c, ulong clen, byte* ad, ulong adlen, byte* npub, byte* k);
 
         #endregion
 
@@ -137,18 +137,18 @@ namespace Fuckshadows.Encryption
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_stream_salsa20_xor_ic(byte[] c, byte[] m, ulong mlen, byte[] n, ulong ic,
-            byte[] k);
+        public static extern unsafe int crypto_stream_salsa20_xor_ic(byte* c, byte* m, ulong mlen, byte* n, ulong ic,
+            byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_stream_chacha20_xor_ic(byte[] c, byte[] m, ulong mlen, byte[] n, ulong ic,
-            byte[] k);
+        public static extern unsafe int crypto_stream_chacha20_xor_ic(byte* c, byte* m, ulong mlen, byte* n, ulong ic,
+            byte* k);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int crypto_stream_chacha20_ietf_xor_ic(byte[] c, byte[] m, ulong mlen, byte[] n, uint ic,
-            byte[] k);
+        public static extern unsafe int crypto_stream_chacha20_ietf_xor_ic(byte* c, byte* m, ulong mlen, byte* n, uint ic,
+            byte* k);
 
         #endregion
     }
