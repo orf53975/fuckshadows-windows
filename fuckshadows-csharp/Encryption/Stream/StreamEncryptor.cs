@@ -16,8 +16,8 @@ namespace Fuckshadows.Encryption.Stream
 
         // every connection should create its own buffer
 
-        private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize * 2);
-        private ByteCircularBuffer _decCircularBuffer = new ByteCircularBuffer(TCPRelay.BufferSize * 2);
+        private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(TCPHandler.BufferSize * 2);
+        private ByteCircularBuffer _decCircularBuffer = new ByteCircularBuffer(TCPHandler.BufferSize * 2);
         protected Dictionary<string, EncryptorInfo> ciphers;
 
         protected byte[] _encryptIV;

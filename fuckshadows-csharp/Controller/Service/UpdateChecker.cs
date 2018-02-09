@@ -2,46 +2,80 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+
+using Newtonsoft.Json.Linq;
+
 using Fuckshadows.Model;
 using Fuckshadows.Util;
-using Fuckshadows.Util.Sockets;
-using Newtonsoft.Json.Linq;
 
 namespace Fuckshadows.Controller
 {
     public class UpdateChecker
     {
         private const string UpdateURL = "https://api.github.com/repos/shadowsocks/shadowsocks-windows/releases";
+        private const string UserAgent = "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36";
 
-        private const string UserAgent =
-            "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36";
-
-        private Configuration _config;
+        private Configuration config;
         public bool NewVersionFound;
         public string LatestVersionNumber;
         public string LatestVersionSuffix;
-        private string _latestVersionName;
-        private string _latestVersionUrl;
+        public string LatestVersionName;
+        public string LatestVersionURL;
         public string LatestVersionLocalName;
         public event EventHandler CheckUpdateCompleted;
 
         public const string Version = "30.0.0.0";
 
-        public async Task CheckUpdate(Configuration config, TimeSpan span)
+        private class CheckUpdateTimer : System.Timers.Timer
         {
-            await Task.Delay(span);
-            Task.Factory.StartNew(async () => await CheckUpdate(config)).Forget();
+            public Configuration config;
+
+            public CheckUpdateTimer(int p) : base(p)
+            {
+            }
         }
 
-        public async Task CheckUpdate(Configuration config)
+        public void CheckUpdate(Configuration config, int delay)
         {
-            this._config = config;
+            CheckUpdateTimer timer = new CheckUpdateTimer(delay);
+            timer.AutoReset = false;
+            timer.Elapsed += Timer_Elapsed;
+            timer.config = config;
+            timer.Enabled = true;
+        }
 
-            Logging.Debug("Checking updates...");
+        private void Timer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            CheckUpdateTimer timer = (CheckUpdateTimer)sender;
+            Configuration config = timer.config;
+            timer.Elapsed -= Timer_Elapsed;
+            timer.Enabled = false;
+            timer.Dispose();
+            CheckUpdate(config);
+        }
+
+        public void CheckUpdate(Configuration config)
+        {
+            this.config = config;
+
             try
             {
-                var response = await WebClientDownloadStringTaskAsync(UpdateURL);
+                Logging.Debug("Checking updates...");
+                WebClient http = CreateWebClient();
+                http.DownloadStringCompleted += http_DownloadStringCompleted;
+                http.DownloadStringAsync(new Uri(UpdateURL));
+            }
+            catch (Exception ex)
+            {
+                Logging.LogUsefulException(ex);
+            }
+        }
+
+        private void http_DownloadStringCompleted(object sender, DownloadStringCompletedEventArgs e)
+        {
+            try
+            {
+                string response = e.Result;
 
                 JArray result = JArray.Parse(response);
 
@@ -55,7 +89,7 @@ namespace Fuckshadows.Controller
                         {
                             continue;
                         }
-                        foreach (JObject asset in (JArray) release["assets"])
+                        foreach (JObject asset in (JArray)release["assets"])
                         {
                             Asset ass = Asset.ParseAsset(asset);
                             if (ass != null)
@@ -74,69 +108,57 @@ namespace Fuckshadows.Controller
                     SortByVersions(asserts);
                     Asset asset = asserts[asserts.Count - 1];
                     NewVersionFound = true;
-                    _latestVersionUrl = asset.browser_download_url;
+                    LatestVersionURL = asset.browser_download_url;
                     LatestVersionNumber = asset.version;
-                    _latestVersionName = asset.name;
+                    LatestVersionName = asset.name;
                     LatestVersionSuffix = asset.suffix == null ? "" : $"-{asset.suffix}";
 
-                    Task.Factory.StartNew(async () => await StartDownload()).Forget();
+                    startDownload();
                 }
                 else
                 {
                     Logging.Debug("No update is available");
-                    CheckUpdateCompleted?.Invoke(this, new EventArgs());
+                    if (CheckUpdateCompleted != null)
+                    {
+                        CheckUpdateCompleted(this, new EventArgs());
+                    }
                 }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Logging.LogUsefulException(e);
+                Logging.LogUsefulException(ex);
             }
         }
 
-        private Task<string> WebClientDownloadStringTaskAsync(string url)
-        {
-            var tcs = new TaskCompletionSource<string>();
-            var wc = CreateWebClient();
-            wc.DownloadStringCompleted += (s, e) =>
-            {
-                if (e.Error != null)
-                    tcs.TrySetException(e.Error);
-                else if (e.Cancelled)
-                    tcs.TrySetCanceled();
-                else
-                    tcs.TrySetResult(e.Result);
-            };
-            wc.DownloadStringAsync(new Uri(url));
-            return tcs.Task;
-        }
-
-        private Task<bool> WebClientDownloadFileTaskAsync()
-        {
-            LatestVersionLocalName = Utils.GetTempPath(_latestVersionName);
-            var tcs = new TaskCompletionSource<bool>();
-            var wc = CreateWebClient();
-            wc.DownloadFileCompleted += (s, e) =>
-            {
-                if (e.Error != null)
-                    tcs.TrySetException(e.Error);
-                else if (e.Cancelled)
-                    tcs.TrySetCanceled();
-                else
-                    tcs.TrySetResult(true);
-            };
-            wc.DownloadFileAsync(new Uri(_latestVersionUrl), LatestVersionLocalName);
-            return tcs.Task;
-        }
-
-        private async Task StartDownload()
+        private void startDownload()
         {
             try
             {
-                if (!await WebClientDownloadFileTaskAsync()) return;
+                LatestVersionLocalName = Utils.GetTempPath(LatestVersionName);
+                WebClient http = CreateWebClient();
+                http.DownloadFileCompleted += Http_DownloadFileCompleted;
+                http.DownloadFileAsync(new Uri(LatestVersionURL), LatestVersionLocalName);
+            }
+            catch (Exception ex)
+            {
+                Logging.LogUsefulException(ex);
+            }
+        }
 
-                Logging.Debug(
-                    $"New version {LatestVersionNumber}{LatestVersionSuffix} found: {LatestVersionLocalName}");
-                CheckUpdateCompleted?.Invoke(this, new EventArgs());
+        private void Http_DownloadFileCompleted(object sender, System.ComponentModel.AsyncCompletedEventArgs e)
+        {
+            try
+            {
+                if (e.Error != null)
+                {
+                    Logging.LogUsefulException(e.Error);
+                    return;
+                }
+                Logging.Debug($"New version {LatestVersionNumber}{LatestVersionSuffix} found: {LatestVersionLocalName}");
+                if (CheckUpdateCompleted != null)
+                {
+                    CheckUpdateCompleted(this, new EventArgs());
+                }
             }
             catch (Exception ex)
             {
@@ -148,7 +170,7 @@ namespace Fuckshadows.Controller
         {
             WebClient http = new WebClient();
             http.Headers.Add("User-Agent", UserAgent);
-            http.Proxy = new WebProxy(IPAddress.Loopback.ToString(), _config.localPort);
+            http.Proxy = new WebProxy(IPAddress.Loopback.ToString(), config.localPort);
             return http;
         }
 

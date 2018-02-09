@@ -18,7 +18,7 @@ namespace Fuckshadows.Encryption.AEAD
         private static readonly byte[] PersonalBytes = Encoding.ASCII.GetBytes(Personal);
 
         // for UDP only
-        protected static byte[] _udpTmpBuf = new byte[65536];
+        protected static byte[] _udpTmpBuf = null;
 
         // every connection should create its own buffer
         private ByteCircularBuffer _encCircularBuffer = new ByteCircularBuffer(MAX_INPUT_SIZE * 2);
@@ -310,6 +310,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         public override void EncryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
         {
+            _udpTmpBuf = new byte[1500];
             // Generate salt
             randBytes(outbuf, saltLen);
             InitCipher(outbuf, true, true);
@@ -324,6 +325,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         public override void DecryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
         {
+            _udpTmpBuf = new byte[1500];
             InitCipher(buf, false, true);
             uint olen = 0;
             lock (_udpTmpBuf) {

@@ -190,7 +190,6 @@ namespace Fuckshadows.Controller
             {
                 SystemProxy.Update(_config, true, null);
             }
-            SaeaAwaitablePoolManager.Dispose();
             StopTrafficStatistics();
         }
 
@@ -308,7 +307,6 @@ namespace Fuckshadows.Controller
             // some logic in configuration updated the config when saving, we need to read it again
             _config = Configuration.Load();
 
-            SaeaAwaitablePoolManager.Init();
             ReloadTrafficStatistics();
 
             if (privoxyRunner == null)
@@ -341,7 +339,7 @@ namespace Fuckshadows.Controller
 
                 TCPRelay tcpRelay = new TCPRelay(this, _config);
                 UDPRelay udpRelay = new UDPRelay(this);
-                List<IService> services = new List<IService>
+                List<Listener.IService> services = new List<Listener.IService>
                 {
                     tcpRelay,
                     udpRelay,
