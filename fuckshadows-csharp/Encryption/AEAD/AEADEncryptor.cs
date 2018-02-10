@@ -310,7 +310,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         public override void EncryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
         {
-            _udpTmpBuf = new byte[1500];
+            _udpTmpBuf = new byte[UDP_BUF_SIZE];
             // Generate salt
             randBytes(outbuf, saltLen);
             InitCipher(outbuf, true, true);
@@ -325,7 +325,7 @@ namespace Fuckshadows.Encryption.AEAD
 
         public override void DecryptUDP(byte[] buf, int length, byte[] outbuf, out int outlength)
         {
-            _udpTmpBuf = new byte[1500];
+            _udpTmpBuf = new byte[UDP_BUF_SIZE];
             InitCipher(buf, false, true);
             uint olen = 0;
             lock (_udpTmpBuf) {

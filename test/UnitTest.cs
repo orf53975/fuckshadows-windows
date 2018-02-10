@@ -517,18 +517,18 @@ namespace test
             };
             AEADEncryptor encryptor = new AEADMbedTLSEncryptor("aes-256-gcm", pass);
             AEADEncryptor decryptor = new AEADMbedTLSEncryptor("aes-256-gcm", pass);
-            byte[] plain = new byte[4096];
-            byte[] cipher = new byte[8192];
-            byte[] plain2 = new byte[4096];
+            byte[] plain = new byte[1500];
+            byte[] cipher = new byte[2048];
+            byte[] plain2 = new byte[1500];
             int cipherLen;
             int plain2Len;
             _random.NextBytes(plain);
             encryptor.InitCipher(saltBytes, true, true);
-            encryptor.EncryptUDP(plain, 4096, cipher, out cipherLen);
+            encryptor.EncryptUDP(plain, 1500, cipher, out cipherLen);
             decryptor.InitCipher(saltBytes, false, true);
             decryptor.DecryptUDP(cipher, cipherLen, plain2, out plain2Len);
-            Assert.IsTrue(plain2Len == 4096);
-            for (int i = 0; i < 4096; i++)
+            Assert.IsTrue(plain2Len == 1500);
+            for (int i = 0; i < 1500; i++)
             {
                 Assert.AreEqual(plain[i], plain2[i]);
             }

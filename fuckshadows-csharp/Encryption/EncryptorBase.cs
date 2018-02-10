@@ -73,6 +73,9 @@
 
         public const int MD5_LEN = 16;
 
+        public const int DEFAULT_UDP_PACKET_SIZE = 1397; // 1492 - 1 - 28 - 2 - 64 = 1397, the default MTU for UDP
+        public const int UDP_BUF_SIZE = DEFAULT_UDP_PACKET_SIZE * 2;
+
         protected EncryptorBase(string method, string password)
         {
             Method = method;

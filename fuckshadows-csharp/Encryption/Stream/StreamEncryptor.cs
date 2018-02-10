@@ -12,7 +12,7 @@ namespace Fuckshadows.Encryption.Stream
         : EncryptorBase
     {
         // for UDP only
-        protected static byte[] _udpTmpBuf = new byte[65536];
+        protected static byte[] _udpTmpBuf;
 
         // every connection should create its own buffer
 
@@ -159,6 +159,7 @@ namespace Fuckshadows.Encryption.Stream
             // Generate IV
             randBytes(outbuf, ivLen);
             initCipher(outbuf, true);
+            _udpTmpBuf = new Byte[UDP_BUF_SIZE];
             lock (_udpTmpBuf) {
                 cipherUpdate(true, length, buf, _udpTmpBuf);
                 outlength = length + ivLen;
@@ -171,6 +172,7 @@ namespace Fuckshadows.Encryption.Stream
             // Get IV from first pos
             initCipher(buf, false);
             outlength = length - ivLen;
+            _udpTmpBuf = new Byte[UDP_BUF_SIZE];
             lock (_udpTmpBuf) {
                 // C# could be multi-threaded
                 PerfByteCopy(buf, ivLen, _udpTmpBuf, 0, length - ivLen);
