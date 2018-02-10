@@ -345,10 +345,10 @@ foreach (var item in filesToCleanup)
       <ErrorText>此项目引用这台计算机上缺少的 NuGet 程序包。使用 NuGet 程序包还原可下载这些程序包。有关详细信息，请参阅 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('3rd\Costura.Fody.1.6.2\build\dotnet\Costura.Fody.targets')" Text="$([System.String]::Format('$(ErrorText)', '3rd\Costura.Fody.1.6.2\build\dotnet\Costura.Fody.targets'))" />
-    <Error Condition="!Exists('3rd\Fody.2.3.23\build\Fody.targets')" Text="$([System.String]::Format('$(ErrorText)', '3rd\Fody.2.3.23\build\Fody.targets'))" />
+    <Error Condition="!Exists('3rd\Fody.2.4.1\build\Fody.targets')" Text="$([System.String]::Format('$(ErrorText)', '3rd\Fody.2.4.1\build\Fody.targets'))" />
   </Target>
   <Import Project="3rd\Costura.Fody.1.6.2\build\dotnet\Costura.Fody.targets" Condition="Exists('3rd\Costura.Fody.1.6.2\build\dotnet\Costura.Fody.targets')" />
-  <Import Project="3rd\Fody.2.3.23\build\Fody.targets" Condition="Exists('3rd\Fody.2.3.23\build\Fody.targets')" />
+  <Import Project="3rd\Fody.2.4.1\build\Fody.targets" Condition="Exists('3rd\Fody.2.4.1\build\Fody.targets')" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
