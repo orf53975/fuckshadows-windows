@@ -43,11 +43,12 @@ namespace Fuckshadows.Util.Sockets
             if (!Program.TFOSupported) return;
             try
             {
-                s.SetSocketOption(SocketOptionLevel.Tcp, (SocketOptionName)15, true);
+                s.SetSocketOption(SocketOptionLevel.Tcp, (SocketOptionName)15, 1);
             }
             catch (Exception e)
             {
                 Logging.LogUsefulException(e);
+                throw;
             }
         }
 

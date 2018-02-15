@@ -547,11 +547,6 @@ namespace Fuckshadows.Controller
 
                     _destConnected = true;
 
-                    if (_config.isVerboseLogging)
-                    {
-                        Logging.Info($"Socket connected to ss server: {_server.FriendlyName()}");
-                    }
-
                     StartPipe();
                 }
                 catch (Exception ex)
