@@ -25,21 +25,10 @@ namespace Fuckshadows.Encryption.AEAD
         private ByteCircularBuffer _decCircularBuffer = new ByteCircularBuffer(MAX_INPUT_SIZE * 2);
 
         public const int CHUNK_LEN_BYTES = 2;
-        public const uint CHUNK_LEN_MASK = 0x3FFFu;
-        public const uint CHUNK_MAX_LEN_WITH_GARBAGE = CHUNK_LEN_MASK - FS_MAX_GARBAGE;
-        public const int FS_MAX_GARBAGE = 255 + FS_GARBAGE_LEN;
-        public const int FS_GARBAGE_LEN = 1;
-
-        // overhead of one chunk, reserved for AEAD ciphers
-        public const int ChunkOverheadSize = 16 * 2 /* two tags */ + CHUNK_LEN_BYTES;
+        public const int CHUNK_LEN_MASK = 0x3FFF;
 
         // max chunk size
-        public const uint MaxChunkSize = CHUNK_LEN_MASK + CHUNK_LEN_BYTES + 16 * 2;
-
-        public const int DefaultMSS = 536;
-
-        // For TFO, ensure no fragmentation in initial send
-        public const int MaxInitGarbageLen = DefaultMSS - (1 + 1 + 255 + 2) /* addrbuf max domain len */ - ChunkOverheadSize - 32 /* salt len */;
+        public const int MaxChunkSize = CHUNK_LEN_MASK + CHUNK_LEN_BYTES + 16 * 2;
 
         protected Dictionary<string, EncryptorInfo> ciphers;
 
@@ -66,9 +55,6 @@ namespace Fuckshadows.Encryption.AEAD
 
         // Is first chunk(tcp request)
         protected bool _tcpRequestSent;
-
-        // zero-length garbage
-        protected static readonly byte[] ZeroGarbageBytes = {0 /* length indicator */};
 
         public AEADEncryptor(string method, string password)
             : base(method, password)
@@ -171,16 +157,10 @@ namespace Fuckshadows.Encryption.AEAD
                 // The first TCP request
                 int encAddrBufLength;
 
-                byte[] garbage = GetGarbage(AddrBufLength, true);
-                Logging.Debug("garbage len: " + garbage.Length);
-
-                byte[] encAddrBufBytes = new byte[garbage.Length + AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES];
+                byte[] encAddrBufBytes = new byte[AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES];
                 byte[] addrBytes = _encCircularBuffer.Get(AddrBufLength);
-                byte[] addrWithGarbage = new byte[AddrBufLength + garbage.Length];
-                PerfByteCopy(garbage, 0, addrWithGarbage, 0, garbage.Length);
-                PerfByteCopy(addrBytes, 0, addrWithGarbage, garbage.Length, AddrBufLength);
-                ChunkEncrypt(addrWithGarbage, AddrBufLength + garbage.Length, encAddrBufBytes, out encAddrBufLength);
-                Debug.Assert(encAddrBufLength == garbage.Length + AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES);
+                ChunkEncrypt(addrBytes, AddrBufLength, encAddrBufBytes, out encAddrBufLength);
+                Debug.Assert(encAddrBufLength == AddrBufLength + tagLen * 2 + CHUNK_LEN_BYTES);
                 Array.Copy(encAddrBufBytes, 0, outbuf, outlength, encAddrBufLength);
                 outlength += encAddrBufLength;
                 Logging.Debug($"_tcpRequestSent outlength {outlength}");
@@ -190,20 +170,11 @@ namespace Fuckshadows.Encryption.AEAD
             while (true) {
                 uint bufSize = (uint)_encCircularBuffer.Size;
                 if (bufSize <= 0) return;
-                var chunklength = (int)Math.Min(bufSize, CHUNK_MAX_LEN_WITH_GARBAGE);
+                var chunklength = (int)Math.Min(bufSize, MaxChunkSize);
                 byte[] chunkBytes = _encCircularBuffer.Get(chunklength);
-
-                byte[] garbage = GetGarbage(chunklength, false);
-                int garbageLength = garbage.Length;
-                Logging.Debug("garbage len: " + garbageLength);
-                byte[] chunkWithGarbage = new byte[chunklength + garbageLength];
-                PerfByteCopy(garbage, 0, chunkWithGarbage, 0, garbageLength);
-                PerfByteCopy(chunkBytes, 0, chunkWithGarbage, garbageLength, chunklength);
-                chunklength += garbageLength;
-
                 int encChunkLength;
                 byte[] encChunkBytes = new byte[chunklength + tagLen * 2 + CHUNK_LEN_BYTES];
-                ChunkEncrypt(chunkWithGarbage, chunklength, encChunkBytes, out encChunkLength);
+                ChunkEncrypt(chunkBytes, chunklength, encChunkBytes, out encChunkLength);
                 Debug.Assert(encChunkLength == chunklength + tagLen * 2 + CHUNK_LEN_BYTES);
                 PerfByteCopy(encChunkBytes, 0, outbuf, outlength, encChunkLength);
                 outlength += encChunkLength;
@@ -289,11 +260,9 @@ namespace Fuckshadows.Encryption.AEAD
 
                 #endregion
 
-                int garbageLen = decChunkBytes[0] + FS_GARBAGE_LEN;
-
                 // output to outbuf
-                PerfByteCopy(decChunkBytes, garbageLen, outbuf, outlength, (int) decChunkLen - garbageLen);
-                outlength += (int)decChunkLen - garbageLen;
+                PerfByteCopy(decChunkBytes, 0, outbuf, outlength, (int) decChunkLen);
+                outlength += (int)decChunkLen;
                 Logging.Debug("aead dec outlength " + outlength);
                 bufSize = _decCircularBuffer.Size;
                 // check if we already done all of them
@@ -366,38 +335,6 @@ namespace Fuckshadows.Encryption.AEAD
             Array.Copy(encLenBytes, 0, ciphertext, 0, (int) encChunkLenLength);
             PerfByteCopy(encBytes, 0, ciphertext, (int) encChunkLenLength, (int) encBufLength);
             cipherLen = (int) (encChunkLenLength + encBufLength);
-        }
-
-        private static byte[] GetGarbage(int plaintextLength, bool isInitialSend)
-        {
-            if (plaintextLength > 1300)
-            {
-                return ZeroGarbageBytes;
-            }
-            byte[] lenBytes = new byte[FS_GARBAGE_LEN];
-            RNG.GetBytes(lenBytes);
-            int len = lenBytes[0];
-            if (!isInitialSend) {
-                if (plaintextLength > 1200)
-                {
-                    len &= 0x1F;
-                }
-                else if (plaintextLength > 900)
-                {
-                    len &= 0x2F;
-                }
-                else if (plaintextLength > 400)
-                {
-                    len &= 0x3F;
-                }
-            } else {
-                // for TFO, don't exceed MSS
-                len = Math.Min(MaxInitGarbageLen, len);
-            }
-            byte[] ret = new byte[len + FS_GARBAGE_LEN];
-            RNG.GetBytes(ret, FS_GARBAGE_LEN, len);
-            ret[0] = (byte) len;
-            return ret;
         }
     }
 }
